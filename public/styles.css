@@ -1,0 +1,248 @@
+:root {
+  --bg: #0c1e2c;
+  --panel-bg: #102f44;
+  --accent: #3bc9db;
+  --accent-dark: #2490a3;
+  --text: #f1f5f9;
+  --muted: #9aa5b3;
+  --danger: #f87171;
+  --success: #4ade80;
+  --white: #ffffff;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: radial-gradient(circle at top, #13314b, var(--bg));
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+header {
+  text-align: center;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2.5rem;
+  letter-spacing: 0.08em;
+}
+
+.tagline {
+  margin-top: 0.5rem;
+  color: var(--muted);
+}
+
+.panel {
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 20px 40px rgba(7, 39, 58, 0.35);
+  border: 1px solid rgba(59, 201, 219, 0.1);
+}
+
+.panel h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+  letter-spacing: 0.05em;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.field span {
+  font-weight: 600;
+}
+
+input[type="text"] {
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+input[type="text"]::placeholder {
+  color: rgba(241, 245, 249, 0.5);
+}
+
+fieldset {
+  border: 1px solid rgba(59, 201, 219, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+legend {
+  padding: 0 0.5rem;
+  color: var(--muted);
+}
+
+button {
+  cursor: pointer;
+  padding: 0.7rem 1.25rem;
+  border-radius: 999px;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--white);
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--accent-dark);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.secondary {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.secondary:hover:not(:disabled) {
+  background: rgba(59, 201, 219, 0.15);
+}
+
+.small {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.move-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.move-grid button[data-selected="true"] {
+  background: var(--success);
+}
+
+.feedback {
+  min-height: 1.5rem;
+  color: var(--muted);
+}
+
+.next-round {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-style: italic;
+  min-height: 1.25rem;
+}
+
+.feedback.positive {
+  color: var(--success);
+}
+
+.feedback.negative {
+  color: var(--danger);
+}
+
+.hidden {
+  display: none;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+thead {
+  background: rgba(59, 201, 219, 0.15);
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid rgba(59, 201, 219, 0.1);
+}
+
+tbody tr:hover {
+  background: rgba(59, 201, 219, 0.08);
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.status-winner {
+  background: rgba(74, 222, 128, 0.25);
+  color: var(--success);
+}
+
+.status-eliminated {
+  background: rgba(248, 113, 113, 0.25);
+  color: var(--danger);
+}
+
+.status-inactive {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--danger);
+}
+
+.status-ready,
+.status-waiting {
+  background: rgba(59, 201, 219, 0.2);
+  color: var(--accent);
+}
+
+.round-outcome {
+  min-height: 1.5rem;
+  color: var(--muted);
+}
+
+.round-meta {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.round-outcome strong {
+  color: var(--text);
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding: 1.5rem 0.75rem 2rem;
+  }
+
+  .panel {
+    padding: 1.25rem;
+  }
+}
