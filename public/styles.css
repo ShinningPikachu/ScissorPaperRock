@@ -253,6 +253,28 @@ tbody tr:hover {
   color: var(--muted);
 }
 
+.strategy-summary {
+  margin-top: 1rem;
+}
+
+.strategy-summary h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.strategy-table {
+  margin-top: 0;
+}
+
+.strategy-table tbody tr.summary-row {
+  background: rgba(59, 201, 219, 0.08);
+  font-weight: 600;
+}
+
+.strategy-table tbody tr.summary-row td:first-child {
+  text-transform: uppercase;
+}
+
 .round-meta {
   display: block;
   font-size: 0.9rem;

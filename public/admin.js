@@ -28,7 +28,8 @@ const elements = {
   playersTableBody: document.getElementById('players-table-body'),
   roundOutcome: document.getElementById('round-outcome'),
   nextRoundTimer: document.getElementById('next-round-timer'),
-  gameStateSection: document.getElementById('game-state')
+  gameStateSection: document.getElementById('game-state'),
+  strategySummaryBody: document.getElementById('strategy-summary-body')
 };
 
 let refreshIntervalId = null;
@@ -247,9 +248,51 @@ function handleAdminMissing() {
 }
 
 function renderState() {
-  renderPlayersTable();
   renderRoundOutcome();
+  renderStrategySummary();
+  renderPlayersTable();
   renderAdminSummary();
+}
+
+function renderStrategySummary() {
+  if (!elements.strategySummaryBody) {
+    return;
+  }
+
+  const summary = window.SPR.summarizeStrategiesByLayer(state.players);
+  const { layers, totals } = summary;
+
+  elements.strategySummaryBody.innerHTML = '';
+
+  if (layers.length === 0) {
+    const emptyRow = document.createElement('tr');
+    const emptyCell = document.createElement('td');
+    emptyCell.colSpan = 6;
+    emptyCell.textContent = 'No registered players yet.';
+    emptyRow.appendChild(emptyCell);
+    elements.strategySummaryBody.appendChild(emptyRow);
+  } else {
+    layers.forEach(({ layer, counts }) => {
+      const row = document.createElement('tr');
+      row.appendChild(createCell(layer));
+      row.appendChild(createCell(counts.rock));
+      row.appendChild(createCell(counts.paper));
+      row.appendChild(createCell(counts.scissors));
+      row.appendChild(createCell(counts.undecided));
+      row.appendChild(createCell(counts.total));
+      elements.strategySummaryBody.appendChild(row);
+    });
+  }
+
+  const totalsRow = document.createElement('tr');
+  totalsRow.className = 'summary-row';
+  totalsRow.appendChild(createCell('Total'));
+  totalsRow.appendChild(createCell(totals.rock));
+  totalsRow.appendChild(createCell(totals.paper));
+  totalsRow.appendChild(createCell(totals.scissors));
+  totalsRow.appendChild(createCell(totals.undecided));
+  totalsRow.appendChild(createCell(totals.total));
+  elements.strategySummaryBody.appendChild(totalsRow);
 }
 
 function renderPlayersTable() {

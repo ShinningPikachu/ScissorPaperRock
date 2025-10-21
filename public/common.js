@@ -48,10 +48,60 @@
     return `<span class="round-meta">${label}: ${list}</span>`;
   }
 
+  function summarizeStrategiesByLayer(players) {
+    const summary = new Map();
+    const defaultMoves = ['rock', 'paper', 'scissors'];
+    const totals = {
+      rock: 0,
+      paper: 0,
+      scissors: 0,
+      undecided: 0,
+      total: 0
+    };
+
+    (Array.isArray(players) ? players : []).forEach((player) => {
+      const layer =
+        typeof player.layer === 'number' && Number.isFinite(player.layer)
+          ? player.layer
+          : 0;
+
+      if (!summary.has(layer)) {
+        summary.set(layer, {
+          rock: 0,
+          paper: 0,
+          scissors: 0,
+          undecided: 0,
+          total: 0
+        });
+      }
+
+      const bucket = summary.get(layer);
+      const move = typeof player.move === 'string' ? player.move.toLowerCase() : '';
+
+      if (defaultMoves.includes(move)) {
+        bucket[move] += 1;
+        totals[move] += 1;
+      } else {
+        bucket.undecided += 1;
+        totals.undecided += 1;
+      }
+
+      bucket.total += 1;
+      totals.total += 1;
+    });
+
+    const layers = Array.from(summary.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([layer, counts]) => ({ layer, counts }));
+
+    return { layers, totals };
+  }
+
   window.SPR = {
     api,
     showFeedback,
     capitalize,
-    formatRoundMeta
+    formatRoundMeta,
+    summarizeStrategiesByLayer
   };
 })();
