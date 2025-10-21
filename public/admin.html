@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scissor Paper Rock Arena - Admin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Admin Control Room</h1>
+      <p class="tagline">Enter the access code to unlock round controls and monitor the lobby.</p>
+      <p class="tagline small-link">Need the player view? <a href="/">Back to the arena</a>.</p>
+    </header>
+
+    <section id="access-section" class="panel">
+      <h2>Admin Access</h2>
+      <form id="access-form">
+        <label class="field">
+          <span>Access Code</span>
+          <input type="password" id="access-code" name="access-code" placeholder="Enter the admin code" required>
+        </label>
+        <label class="field">
+          <span>Admin Name</span>
+          <input type="text" id="admin-name" name="admin-name" placeholder="How should we label you?" required>
+        </label>
+        <button type="submit">Unlock Controls</button>
+      </form>
+      <p id="access-feedback" class="feedback"></p>
+    </section>
+
+    <section id="admin-panel" class="panel hidden">
+      <h2>Control Panel</h2>
+      <p id="admin-summary"></p>
+      <div class="admin-buttons">
+        <button id="start-round-button">Start Round</button>
+        <button id="reset-game-button" class="secondary">Reset Game</button>
+      </div>
+      <p id="admin-feedback" class="feedback"></p>
+    </section>
+
+    <section id="game-state" class="panel hidden">
+      <div class="state-header">
+        <h2>Match Status</h2>
+        <button id="refresh-button" class="secondary small">Refresh</button>
+      </div>
+      <p class="next-round" id="next-round-timer"></p>
+      <div class="round-outcome" id="round-outcome"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Role</th>
+            <th>Layer</th>
+            <th>Status</th>
+            <th>Strategy</th>
+          </tr>
+        </thead>
+        <tbody id="players-table-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="common.js" defer></script>
+  <script src="admin.js" defer></script>
+</body>
+</html>

@@ -10,7 +10,8 @@
   <main class="container">
     <header>
       <h1>Scissor Paper Rock Arena</h1>
-      <p class="tagline">Register, lock your move, and wait for the admin to unleash the round.</p>
+      <p class="tagline">Join the arena, lock in your strategy, and climb the layers.</p>
+      <p class="tagline small-link">Are you the host? <a href="/admin.html">Enter the admin control room</a>.</p>
     </header>
 
     <section id="registration-section" class="panel">
@@ -20,24 +21,13 @@
           <span>Name</span>
           <input type="text" id="player-name" name="player-name" placeholder="Enter your name" required>
         </label>
-        <fieldset class="role-field">
-          <legend>Role</legend>
-          <label>
-            <input type="radio" name="role" value="player" checked>
-            Player
-          </label>
-          <label>
-            <input type="radio" name="role" value="admin">
-            Admin
-          </label>
-        </fieldset>
         <button type="submit">Register</button>
       </form>
       <p id="registration-feedback" class="feedback"></p>
     </section>
 
     <section id="player-actions" class="panel hidden">
-      <h2>Your Move</h2>
+      <h2>Choose Your Strategy</h2>
       <p id="player-summary"></p>
       <div class="move-grid">
         <button data-move="rock">Rock</button>
@@ -45,16 +35,6 @@
         <button data-move="scissors">Scissors</button>
       </div>
       <p id="player-status" class="feedback"></p>
-    </section>
-
-    <section id="admin-actions" class="panel hidden">
-      <h2>Admin Controls</h2>
-      <p id="admin-summary"></p>
-      <div class="admin-buttons">
-        <button id="start-round-button">Start Round</button>
-        <button id="reset-game-button" class="secondary">Reset Game</button>
-      </div>
-      <p id="admin-feedback" class="feedback"></p>
     </section>
 
     <section id="game-state" class="panel">
@@ -71,7 +51,7 @@
             <th>Role</th>
             <th>Layer</th>
             <th>Status</th>
-            <th>Move</th>
+            <th>Strategy</th>
           </tr>
         </thead>
         <tbody id="players-table-body"></tbody>
@@ -79,6 +59,7 @@
     </section>
   </main>
 
-  <script src="app.js" defer></script>
+  <script src="common.js" defer></script>
+  <script src="user.js" defer></script>
 </body>
 </html>
