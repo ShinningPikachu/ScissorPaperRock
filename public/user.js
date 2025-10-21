@@ -1,3 +1,5 @@
+const { api, showFeedback, capitalize, formatRoundMeta } = window.SPR;
+
 const state = {
   player: null,
   players: [],
@@ -16,15 +18,11 @@ const elements = {
   playerSummary: document.getElementById('player-summary'),
   playerStatus: document.getElementById('player-status'),
   moveButtons: document.querySelectorAll('#player-actions .move-grid button'),
-  adminActions: document.getElementById('admin-actions'),
-  adminSummary: document.getElementById('admin-summary'),
-  adminFeedback: document.getElementById('admin-feedback'),
-  startRoundButton: document.getElementById('start-round-button'),
-  resetGameButton: document.getElementById('reset-game-button'),
   refreshButton: document.getElementById('refresh-button'),
   playersTableBody: document.getElementById('players-table-body'),
   roundOutcome: document.getElementById('round-outcome'),
-  nextRoundTimer: document.getElementById('next-round-timer')
+  nextRoundTimer: document.getElementById('next-round-timer'),
+  strategySummaryBody: document.getElementById('strategy-summary-body')
 };
 
 const STORAGE_KEY = 'spr-current-player';
@@ -38,20 +36,21 @@ function init() {
 }
 
 function wireEventHandlers() {
-  elements.registrationForm.addEventListener('submit', onRegister);
+  if (elements.registrationForm) {
+    elements.registrationForm.addEventListener('submit', onRegister);
+  }
   elements.moveButtons.forEach((button) => {
     button.addEventListener('click', () => onMoveSelected(button.dataset.move));
   });
-  elements.startRoundButton.addEventListener('click', onStartRound);
-  elements.resetGameButton.addEventListener('click', onResetGame);
-  elements.refreshButton.addEventListener('click', refreshState);
+  if (elements.refreshButton) {
+    elements.refreshButton.addEventListener('click', refreshState);
+  }
 }
 
 async function onRegister(event) {
   event.preventDefault();
   const formData = new FormData(elements.registrationForm);
   const name = (formData.get('player-name') || '').trim();
-  const role = formData.get('role') || 'player';
 
   if (!name) {
     showFeedback(elements.registrationFeedback, 'Please provide a name.', true);
@@ -61,7 +60,7 @@ async function onRegister(event) {
   try {
     const response = await api.request('/api/players', {
       method: 'POST',
-      body: { name, role }
+      body: { name, role: 'player' }
     });
     state.player = response.player;
     persistPlayerToSession();
@@ -93,74 +92,15 @@ async function onMoveSelected(move) {
   }
 }
 
-async function onStartRound() {
-  if (!state.player || state.player.role !== 'admin') {
-    return;
-  }
-
-  toggleAdminControls(true);
-  try {
-    const response = await api.request('/api/game/start', {
-      method: 'POST',
-      body: { adminId: state.player.id }
-    });
-    if (response.state) {
-      state.players = response.state.players;
-      state.round = response.state.round;
-      syncCurrentPlayer();
-    }
-    showFeedback(elements.adminFeedback, response.outcome.message, false);
-    refreshState();
-  } catch (error) {
-    showFeedback(elements.adminFeedback, error.message, true);
-  } finally {
-    toggleAdminControls(false);
-  }
-}
-
-async function onResetGame() {
-  if (!state.player || state.player.role !== 'admin') {
-    return;
-  }
-
-  toggleAdminControls(true);
-  try {
-    const response = await api.request('/api/game/reset', { method: 'POST' });
-    clearStoredPlayer();
-    state.player = null;
-    state.players = response.state.players;
-    state.round = response.state.round;
-    showFeedback(elements.adminFeedback, response.message, false);
-    showFeedback(elements.registrationFeedback, '', false);
-    refreshState();
-  } catch (error) {
-    showFeedback(elements.adminFeedback, error.message, true);
-  } finally {
-    toggleAdminControls(false);
-  }
-}
-
-function toggleAdminControls(disabled) {
-  elements.startRoundButton.disabled = disabled;
-  elements.resetGameButton.disabled = disabled;
-}
-
-function highlightSelectedMove(move) {
-  elements.moveButtons.forEach((button) => {
-    const isSelected = button.dataset.move === move;
-    button.dataset.selected = isSelected ? 'true' : 'false';
-  });
-}
-
 async function refreshState() {
   try {
     const data = await api.request('/api/state');
     state.availableMoves = data.availableMoves || [];
     state.players = data.players || [];
     state.round = data.round || null;
-     state.lastOutcome = data.lastOutcome || null;
-     state.nextRoundStartsAt = data.nextRoundStartsAt || null;
-     state.roundIntervalMs = data.roundIntervalMs || state.roundIntervalMs;
+    state.lastOutcome = data.lastOutcome || null;
+    state.nextRoundStartsAt = data.nextRoundStartsAt || null;
+    state.roundIntervalMs = data.roundIntervalMs || state.roundIntervalMs;
     syncCurrentPlayer();
     renderState();
     updateCountdown();
@@ -190,12 +130,58 @@ function syncCurrentPlayer() {
 }
 
 function renderState() {
-  renderPlayersTable();
   renderRoundOutcome();
+  renderStrategySummary();
+  renderPlayersTable();
   updatePersonalSections();
 }
 
+function renderStrategySummary() {
+  if (!elements.strategySummaryBody) {
+    return;
+  }
+
+  const summary = window.SPR.summarizeStrategiesByLayer(state.players);
+  const { layers, totals } = summary;
+
+  elements.strategySummaryBody.innerHTML = '';
+
+  if (layers.length === 0) {
+    const emptyRow = document.createElement('tr');
+    const emptyCell = document.createElement('td');
+    emptyCell.colSpan = 6;
+    emptyCell.textContent = 'No registered players yet.';
+    emptyRow.appendChild(emptyCell);
+    elements.strategySummaryBody.appendChild(emptyRow);
+  } else {
+    layers.forEach(({ layer, counts }) => {
+      const row = document.createElement('tr');
+      row.appendChild(createCell(layer));
+      row.appendChild(createCell(counts.rock));
+      row.appendChild(createCell(counts.paper));
+      row.appendChild(createCell(counts.scissors));
+      row.appendChild(createCell(counts.undecided));
+      row.appendChild(createCell(counts.total));
+      elements.strategySummaryBody.appendChild(row);
+    });
+  }
+
+  const totalsRow = document.createElement('tr');
+  totalsRow.className = 'summary-row';
+  totalsRow.appendChild(createCell('Total'));
+  totalsRow.appendChild(createCell(totals.rock));
+  totalsRow.appendChild(createCell(totals.paper));
+  totalsRow.appendChild(createCell(totals.scissors));
+  totalsRow.appendChild(createCell(totals.undecided));
+  totalsRow.appendChild(createCell(totals.total));
+  elements.strategySummaryBody.appendChild(totalsRow);
+}
+
 function renderPlayersTable() {
+  if (!elements.playersTableBody) {
+    return;
+  }
+
   elements.playersTableBody.innerHTML = '';
   state.players.forEach((player) => {
     const row = document.createElement('tr');
@@ -222,10 +208,13 @@ function renderPlayersTable() {
 }
 
 function renderRoundOutcome() {
+  if (!elements.roundOutcome) {
+    return;
+  }
+
   const outcome = state.lastOutcome;
   if (!outcome) {
-    elements.roundOutcome.textContent =
-      'Waiting for the first round to complete.';
+    elements.roundOutcome.textContent = 'Waiting for the first round to complete.';
     return;
   }
 
@@ -235,48 +224,28 @@ function renderRoundOutcome() {
       ? `Round ${outcome.roundNumber}:`
       : 'Round Result:';
 
-  let html = `<strong>${roundLabel}</strong> ${message}`;
+  const details = [
+    `<strong>${roundLabel}</strong> ${message}`,
+    formatRoundMeta('Winners', resolveNames(outcome.winnerPlayerIds)),
+    formatRoundMeta('Down a layer', resolveNames(outcome.eliminatedPlayerIds)),
+    formatRoundMeta('Missed the round', resolveNames(outcome.inactivePlayerIds))
+  ];
 
-  const winnerNames = resolveNames(outcome.winnerPlayerIds);
-  const eliminatedNames = resolveNames(outcome.eliminatedPlayerIds);
-  const inactiveNames = resolveNames(outcome.inactivePlayerIds);
-
-  if (winnerNames.length) {
-    html += `<span class="round-meta">Winners: ${winnerNames.join(', ')}</span>`;
-  }
-
-  if (eliminatedNames.length) {
-    html += `<span class="round-meta">Down a layer: ${eliminatedNames.join(
-      ', '
-    )}</span>`;
-  }
-
-  if (inactiveNames.length) {
-    html += `<span class="round-meta">Missed the round: ${inactiveNames.join(
-      ', '
-    )}</span>`;
-  }
-
-  elements.roundOutcome.innerHTML = html;
+  elements.roundOutcome.innerHTML = details.filter(Boolean).join(' ');
 }
 
 function updatePersonalSections() {
-  const hasPlayer = Boolean(state.player);
-  const isAdmin = hasPlayer && state.player.role === 'admin';
+  if (!elements.playerActions) {
+    return;
+  }
 
-  elements.playerActions.classList.toggle('hidden', !hasPlayer || isAdmin);
-  elements.adminActions.classList.toggle('hidden', !isAdmin);
+  const hasPlayer = Boolean(state.player);
+  elements.playerActions.classList.toggle('hidden', !hasPlayer);
 
   if (!hasPlayer) {
     highlightSelectedMove(null);
     elements.playerStatus.textContent = '';
     elements.playerSummary.textContent = '';
-    elements.adminSummary.textContent = '';
-    return;
-  }
-
-  if (isAdmin) {
-    elements.adminSummary.textContent = `Logged in as admin ${state.player.name}.`;
     return;
   }
 
@@ -303,11 +272,11 @@ function updatePersonalSections() {
       message = `You won the last round! You remain on layer ${layerValue}.`;
       break;
     case 'ready':
-      message = 'Move locked. Waiting for the next round.';
+      message = 'Strategy locked. Waiting for the next round.';
       break;
     case 'waiting':
     default:
-      message = 'Choose your move to lock it in before the next round.';
+      message = 'Choose your strategy to lock it in before the next round.';
       break;
   }
   showFeedback(elements.playerStatus, message, isError);
@@ -330,23 +299,11 @@ function resolveNames(playerIds) {
     .map((player) => player.name);
 }
 
-function capitalize(value) {
-  if (!value) {
-    return '';
-  }
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function showFeedback(element, message, isError) {
-  if (!element) {
-    return;
-  }
-  element.textContent = message;
-  element.classList.remove('positive', 'negative');
-  if (!message) {
-    return;
-  }
-  element.classList.add(isError ? 'negative' : 'positive');
+function highlightSelectedMove(move) {
+  elements.moveButtons.forEach((button) => {
+    const isSelected = button.dataset.move === move;
+    button.dataset.selected = isSelected ? 'true' : 'false';
+  });
 }
 
 function updateCountdown() {
@@ -381,9 +338,7 @@ function updateCountdown() {
   }
   parts.push(`${seconds}s`);
 
-  elements.nextRoundTimer.textContent = `Next auto round in ${parts.join(
-    ' '
-  )}.`;
+  elements.nextRoundTimer.textContent = `Next auto round in ${parts.join(' ')}.`;
 }
 
 function restorePlayerFromSession() {
@@ -408,26 +363,5 @@ function persistPlayerToSession() {
 function clearStoredPlayer() {
   sessionStorage.removeItem(STORAGE_KEY);
 }
-
-const api = {
-  async request(path, { method = 'GET', body } = {}) {
-    const options = { method, headers: {} };
-
-    if (body !== undefined) {
-      options.headers['Content-Type'] = 'application/json';
-      options.body = JSON.stringify(body);
-    }
-
-    const response = await fetch(path, options);
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      const message = payload.error || 'Request failed.';
-      throw new Error(message);
-    }
-
-    return payload;
-  }
-};
 
 init();

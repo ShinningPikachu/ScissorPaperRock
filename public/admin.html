@@ -3,43 +3,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scissor Paper Rock Arena</title>
+  <title>Scissor Paper Rock Arena - Admin</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="container">
     <header>
-      <h1>Scissor Paper Rock Arena</h1>
-      <p class="tagline">Join the arena, lock in your strategy, and climb the layers.</p>
-      <p class="tagline small-link">Are you the host? <a href="/admin.html">Enter the admin control room</a>.</p>
+      <h1>Admin Control Room</h1>
+      <p class="tagline">Enter the access code to unlock round controls and monitor the lobby.</p>
+      <p class="tagline small-link">Need the player view? <a href="/">Back to the arena</a>.</p>
     </header>
 
-    <section id="registration-section" class="panel">
-      <h2>Join The Match</h2>
-      <form id="registration-form">
+    <section id="access-section" class="panel">
+      <h2>Admin Access</h2>
+      <form id="access-form">
         <label class="field">
-          <span>Name</span>
-          <input type="text" id="player-name" name="player-name" placeholder="Enter your name" required>
+          <span>Access Code</span>
+          <input type="password" id="access-code" name="access-code" placeholder="Enter the admin code" required>
         </label>
-        <button type="submit">Register</button>
+        <label class="field">
+          <span>Admin Name</span>
+          <input type="text" id="admin-name" name="admin-name" placeholder="How should we label you?" required>
+        </label>
+        <button type="submit">Unlock Controls</button>
       </form>
-      <p id="registration-feedback" class="feedback"></p>
+      <p id="access-feedback" class="feedback"></p>
     </section>
 
-    <section id="player-actions" class="panel hidden">
-      <h2>Choose Your Strategy</h2>
-      <p id="player-summary"></p>
-      <div class="move-grid">
-        <button data-move="rock">Rock</button>
-        <button data-move="paper">Paper</button>
-        <button data-move="scissors">Scissors</button>
+    <section id="admin-panel" class="panel hidden">
+      <h2>Control Panel</h2>
+      <p id="admin-summary"></p>
+      <div class="admin-buttons">
+        <button id="start-round-button">Start Round</button>
+        <button id="reset-game-button" class="secondary">Reset Game</button>
       </div>
-      <p id="player-status" class="feedback"></p>
+      <p id="admin-feedback" class="feedback"></p>
     </section>
 
-    <section id="game-state" class="panel">
+    <section id="game-state" class="panel hidden">
       <div class="state-header">
-        <h2>Current Lobby</h2>
+        <h2>Match Status</h2>
         <button id="refresh-button" class="secondary small">Refresh</button>
       </div>
       <p class="next-round" id="next-round-timer"></p>
@@ -76,6 +79,6 @@
   </main>
 
   <script src="common.js" defer></script>
-  <script src="user.js" defer></script>
+  <script src="admin.js" defer></script>
 </body>
 </html>

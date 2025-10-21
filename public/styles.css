@@ -24,6 +24,16 @@ body {
   min-height: 100vh;
 }
 
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-dark);
+  text-decoration: underline;
+}
+
 .container {
   max-width: 960px;
   margin: 0 auto;
@@ -46,6 +56,10 @@ h1 {
 .tagline {
   margin-top: 0.5rem;
   color: var(--muted);
+}
+
+.small-link {
+  font-size: 0.95rem;
 }
 
 .panel {
@@ -158,12 +172,25 @@ button:disabled {
   min-height: 1.25rem;
 }
 
+.state-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .feedback.positive {
   color: var(--success);
 }
 
 .feedback.negative {
   color: var(--danger);
+}
+
+.admin-buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .hidden {
@@ -224,6 +251,28 @@ tbody tr:hover {
 .round-outcome {
   min-height: 1.5rem;
   color: var(--muted);
+}
+
+.strategy-summary {
+  margin-top: 1rem;
+}
+
+.strategy-summary h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.strategy-table {
+  margin-top: 0;
+}
+
+.strategy-table tbody tr.summary-row {
+  background: rgba(59, 201, 219, 0.08);
+  font-weight: 600;
+}
+
+.strategy-table tbody tr.summary-row td:first-child {
+  text-transform: uppercase;
 }
 
 .round-meta {
