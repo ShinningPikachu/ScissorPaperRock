@@ -1,7 +1,14 @@
-const { PLAYER_STATUS, ROLES, MIN_STAGE, MAX_STAGE } = require('./constants');
+const { PLAYER_STATUS, ROLES, MIN_STAGE, MAX_STAGE, MOVES } = require('./constants');
+
+const BOT_STRATEGIES = new Set([
+  'random',
+  MOVES.ROCK,
+  MOVES.PAPER,
+  MOVES.SCISSORS
+]);
 
 class Player {
-  constructor({ id, name, role, isBot = false }) {
+  constructor({ id, name, role, isBot = false, botStrategy = 'random' }) {
     this.id = id;
     this.name = name;
     this.role = role === ROLES.ADMIN ? ROLES.ADMIN : ROLES.PLAYER;
@@ -9,6 +16,8 @@ class Player {
     if (this.isBot && this.role !== ROLES.ADMIN) {
       this.role = ROLES.PLAYER;
     }
+    this.botStrategy = this.isBot ? this.normalizeStrategy(botStrategy) : null;
+    this.isActive = true;
     this.move = null;
     this.stageStrategies = {};
     this.status = PLAYER_STATUS.WAITING;
@@ -17,7 +26,31 @@ class Player {
     this.lastMoveAt = null;
   }
 
+  normalizeStrategy(strategy) {
+    const value = typeof strategy === 'string' ? strategy.toLowerCase() : 'random';
+    if (BOT_STRATEGIES.has(value)) {
+      return value;
+    }
+    return 'random';
+  }
+
+  setBotStrategy(strategy) {
+    if (!this.isBot) {
+      this.botStrategy = null;
+      return;
+    }
+    this.botStrategy = this.normalizeStrategy(strategy);
+  }
+
+  isActivePlayer() {
+    return this.role === ROLES.PLAYER && this.isActive;
+  }
+
   setMove(move, stage = this.layer) {
+    if (this.role === ROLES.PLAYER && !this.isActive) {
+      return;
+    }
+
     const stageValue = Number.parseInt(stage, 10);
     if (!Number.isFinite(stageValue)) {
       return;
@@ -45,14 +78,16 @@ class Player {
 
   eliminate() {
     if (this.role === ROLES.PLAYER) {
+      this.isActive = false;
       this.layer = Math.max(this.layer - 1, MIN_STAGE);
-      this.updateMoveForCurrentStage();
+      this.move = null;
     }
     this.status = PLAYER_STATUS.ELIMINATED;
   }
 
   markWinner() {
     if (this.role === ROLES.PLAYER) {
+      this.isActive = true;
       if (this.layer > MAX_STAGE) {
         this.layer = Math.max(this.layer - 1, MIN_STAGE);
       } else if (this.layer < MAX_STAGE) {
@@ -66,6 +101,7 @@ class Player {
   markInactive() {
     if (this.role === ROLES.PLAYER) {
       this.layer = Math.max(this.layer - 1, MIN_STAGE);
+      this.isActive = true;
       this.updateMoveForCurrentStage();
     }
     this.status = PLAYER_STATUS.INACTIVE;
@@ -86,6 +122,8 @@ class Player {
       name: this.name,
       role: this.role,
       isBot: this.isBot,
+      botStrategy: this.isBot ? this.botStrategy : null,
+      active: this.isActive,
       move: this.move,
       stageStrategies: { ...this.stageStrategies },
       status: this.status,

@@ -12,7 +12,8 @@ const ROUND_MOVE_SETS = [
 const game = new GameState({
   roundIntervalMs: 0,
   processStageMs: 0,
-  competitionStageMs: 0
+  competitionStageMs: 0,
+  duelStageMs: 0
 });
 const admin = game.registerPlayer({ name: 'Sim Admin', role: ROLES.ADMIN });
 const players = [];
@@ -28,6 +29,16 @@ for (let index = 1; index <= TOTAL_PLAYERS; index += 1) {
 console.log(`Registered ${players.length} simulated players plus admin ${admin.name}.`);
 
 for (let round = 1; round <= ROUNDS_TO_PLAY; round += 1) {
+  const activeBeforeRound =
+    typeof game.getActivePlayerCount === 'function'
+      ? game.getActivePlayerCount()
+      : players.length;
+
+  if (activeBeforeRound <= 1) {
+    console.log('\nOnly one active player remains. Ending simulation early.');
+    break;
+  }
+
   console.log(`\n--- Round ${round} ---`);
 
   const [primaryMove, secondaryMove] =
@@ -35,6 +46,11 @@ for (let round = 1; round <= ROUNDS_TO_PLAY; round += 1) {
 
   players.forEach((playerMeta, idx) => {
     const playerEntity = game.getPlayer(playerMeta.id);
+
+     if (typeof playerEntity.isActivePlayer === 'function' && !playerEntity.isActivePlayer()) {
+      return;
+    }
+
     const shouldSkipThisRound = round % 2 === 1 && idx % 6 === 0;
 
     if (shouldSkipThisRound) {
@@ -68,7 +84,8 @@ for (let round = 1; round <= ROUNDS_TO_PLAY; round += 1) {
       Name: player.name,
       Move: player.move,
       Status: player.status,
-      Stage: player.layer
+      Stage: player.layer,
+      Active: player.active !== false
     }));
 
   console.table(tableData);

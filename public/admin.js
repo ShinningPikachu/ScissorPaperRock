@@ -10,7 +10,8 @@ const state = {
   round: null,
   lastOutcome: null,
   nextRoundStartsAt: null,
-  roundIntervalMs: null
+  roundIntervalMs: null,
+  tournamentMode: false
 };
 
 const elements = {
@@ -24,7 +25,18 @@ const elements = {
   adminFeedback: document.getElementById('admin-feedback'),
   startRoundButton: document.getElementById('start-round-button'),
   resetGameButton: document.getElementById('reset-game-button'),
+  addBotsForm: document.getElementById('add-bots-form'),
+  botCountInput: document.getElementById('bot-count'),
+  botNamesInput: document.getElementById('bot-names'),
+  botStrategySelect: document.getElementById('bot-strategy'),
+  addBotsButton: document.getElementById('add-bots-button'),
   refreshButton: document.getElementById('refresh-button'),
+  duelDisplay: document.getElementById('duel-display'),
+  duelFighterA: document.getElementById('duel-fighter-a'),
+  duelFighterB: document.getElementById('duel-fighter-b'),
+  duelSubtext: document.getElementById('duel-subtext'),
+  duelLineup: document.getElementById('duel-lineup'),
+  stageOccupancyBody: document.getElementById('stage-occupancy-body'),
   playersTableBody: document.getElementById('players-table-body'),
   roundOutcome: document.getElementById('round-outcome'),
   nextRoundTimer: document.getElementById('next-round-timer'),
@@ -55,6 +67,9 @@ function wireEventHandlers() {
   }
   if (elements.resetGameButton) {
     elements.resetGameButton.addEventListener('click', onResetGame);
+  }
+  if (elements.addBotsForm) {
+    elements.addBotsForm.addEventListener('submit', onAddBots);
   }
   if (elements.refreshButton) {
     elements.refreshButton.addEventListener('click', refreshState);
@@ -130,6 +145,12 @@ async function onStartRound() {
     if (response.state) {
       state.players = response.state.players || [];
       state.round = response.state.round || null;
+      state.lastOutcome = response.state.lastOutcome || null;
+      state.nextRoundStartsAt = response.state.nextRoundStartsAt || null;
+      state.tournamentMode =
+        typeof response.state.tournamentMode === 'boolean'
+          ? response.state.tournamentMode
+          : state.tournamentMode;
       syncAdminFromPlayers();
     }
     showFeedback(elements.adminFeedback, response.outcome.message, false);
@@ -171,12 +192,116 @@ async function onResetGame() {
   }
 }
 
+async function onAddBots(event) {
+  event.preventDefault();
+  if (!state.admin) {
+    return;
+  }
+
+  const rawCount = elements.botCountInput ? elements.botCountInput.value : '';
+  const parsedCount = Number.parseInt(rawCount, 10);
+  const rawNames = elements.botNamesInput ? elements.botNamesInput.value : '';
+  const strategyValue = elements.botStrategySelect
+    ? elements.botStrategySelect.value
+    : 'random';
+
+  const parsedNames = rawNames
+    .split(/[\r\n,]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  const allowedStrategies = new Set(['random', 'rock', 'paper', 'scissors']);
+  const normalizedStrategy =
+    typeof strategyValue === 'string' && strategyValue.trim().length > 0
+      ? strategyValue.trim().toLowerCase()
+      : 'random';
+
+  if (!allowedStrategies.has(normalizedStrategy)) {
+    showFeedback(elements.adminFeedback, 'Choose a valid bot strategy.', true);
+    return;
+  }
+
+  if (parsedNames.length > 24) {
+    showFeedback(elements.adminFeedback, 'You can add up to 24 bots per batch.', true);
+    return;
+  }
+
+  const usingNames = parsedNames.length > 0;
+
+  if (!usingNames) {
+    if (!Number.isFinite(parsedCount) || parsedCount <= 0) {
+      showFeedback(elements.adminFeedback, 'Enter a valid number of bots to add.', true);
+      return;
+    }
+
+    if (parsedCount > 24) {
+      showFeedback(elements.adminFeedback, 'You can add up to 24 bots at a time.', true);
+      return;
+    }
+  }
+
+  const payload = {
+    adminId: state.admin.id,
+    strategy: normalizedStrategy
+  };
+
+  if (usingNames) {
+    payload.names = parsedNames;
+  } else {
+    payload.count = parsedCount;
+  }
+
+  toggleAdminControls(true);
+  try {
+    const response = await api.request('/api/bots', {
+      method: 'POST',
+      body: payload
+    });
+
+    showFeedback(elements.adminFeedback, response.message, false);
+    if (elements.botNamesInput) {
+      elements.botNamesInput.value = '';
+    }
+    state.players = response.state.players || [];
+    state.round = response.state.round || null;
+    state.lastOutcome = response.state.lastOutcome || null;
+    state.nextRoundStartsAt = response.state.nextRoundStartsAt || null;
+    state.tournamentMode =
+      typeof response.state.tournamentMode === 'boolean'
+        ? response.state.tournamentMode
+        : state.tournamentMode;
+    renderState();
+  } catch (error) {
+    showFeedback(elements.adminFeedback, error.message, true);
+  } finally {
+    toggleAdminControls(false);
+  }
+}
+
 function toggleAdminControls(disabled) {
+  const activePlayers = (state.players || []).filter(
+    (player) => player.role === 'player' && player.active !== false
+  ).length;
+
+  const startDisabled = disabled || state.tournamentMode || activePlayers <= 1;
   if (elements.startRoundButton) {
-    elements.startRoundButton.disabled = disabled;
+    elements.startRoundButton.disabled = startDisabled;
   }
   if (elements.resetGameButton) {
     elements.resetGameButton.disabled = disabled;
+  }
+  const botControlsDisabled = disabled || state.tournamentMode;
+  if (elements.addBotsButton) {
+    elements.addBotsButton.disabled = botControlsDisabled;
+  }
+  if (elements.botCountInput) {
+    elements.botCountInput.disabled = botControlsDisabled;
+  }
+  if (elements.botNamesInput) {
+    elements.botNamesInput.disabled = botControlsDisabled;
+  }
+  if (elements.botStrategySelect) {
+    elements.botStrategySelect.disabled = botControlsDisabled;
   }
 }
 
@@ -208,6 +333,7 @@ async function refreshState() {
     state.lastOutcome = data.lastOutcome || null;
     state.nextRoundStartsAt = data.nextRoundStartsAt || null;
     state.roundIntervalMs = data.roundIntervalMs || state.roundIntervalMs;
+    state.tournamentMode = Boolean(data.tournamentMode);
     syncAdminFromPlayers();
     renderState();
     updateCountdown();
@@ -248,10 +374,68 @@ function handleAdminMissing() {
 }
 
 function renderState() {
+  renderDuelDisplay();
   renderRoundOutcome();
+  renderStageOccupancy();
   renderStrategySummary();
   renderPlayersTable();
   renderAdminSummary();
+}
+
+function renderDuelDisplay() {
+  if (!elements.duelDisplay) {
+    return;
+  }
+
+  const round = state.round || {};
+  const matchups = Array.isArray(round.matchups) ? round.matchups : [];
+
+  if (round.phase !== 'duel' || matchups.length === 0) {
+    elements.duelDisplay.classList.add('hidden');
+    elements.duelDisplay.classList.remove('active');
+    return;
+  }
+
+  elements.duelDisplay.classList.remove('hidden');
+  elements.duelDisplay.classList.add('active');
+
+  const safeIndex =
+    typeof round.currentMatchupIndex === 'number' && round.currentMatchupIndex >= 0
+      ? Math.min(round.currentMatchupIndex, matchups.length - 1)
+      : 0;
+  const currentMatchup = matchups[safeIndex] || matchups[0];
+
+  if (elements.duelFighterA) {
+    elements.duelFighterA.textContent = currentMatchup?.aName || 'Player A';
+  }
+  if (elements.duelFighterB) {
+    elements.duelFighterB.textContent =
+      currentMatchup?.bName || 'Awaiting opponent';
+  }
+
+  if (elements.duelSubtext) {
+    const totalPairs = matchups.length;
+    elements.duelSubtext.textContent =
+      totalPairs > 1
+        ? `Round ${round.number || ''}: ${totalPairs} duels lined up.`
+        : 'Clash in progress...';
+  }
+
+  if (elements.duelLineup) {
+    elements.duelLineup.innerHTML = '';
+    matchups.forEach((pair, index) => {
+      const item = document.createElement('li');
+      if (pair.bName) {
+        item.textContent = `${pair.aName} vs ${pair.bName}`;
+      } else {
+        item.textContent = `${pair.aName} advances with a bye`;
+      }
+      if (index === safeIndex) {
+        item.classList.add('active');
+      }
+      elements.duelLineup.appendChild(item);
+    });
+  }
 }
 
 function renderStrategySummary() {
@@ -293,6 +477,53 @@ function renderStrategySummary() {
   totalsRow.appendChild(createCell(totals.undecided));
   totalsRow.appendChild(createCell(totals.total));
   elements.strategySummaryBody.appendChild(totalsRow);
+}
+
+function renderStageOccupancy() {
+  if (!elements.stageOccupancyBody) {
+    return;
+  }
+
+  const groups = window.SPR.groupPlayersByStage(state.players);
+  elements.stageOccupancyBody.innerHTML = '';
+
+  if (groups.length === 0) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 2;
+    cell.textContent = 'No players on the board yet.';
+    row.appendChild(cell);
+    elements.stageOccupancyBody.appendChild(row);
+    return;
+  }
+
+  groups.forEach(({ layer, players }) => {
+    const row = document.createElement('tr');
+    row.appendChild(createCell(layer));
+
+    const playersCell = document.createElement('td');
+    if (players.length === 0) {
+      playersCell.textContent = '—';
+    } else {
+      players.forEach((player) => {
+        const pill = document.createElement('span');
+        pill.className = 'player-pill';
+        if (!player.active) {
+          pill.classList.add('eliminated');
+        } else if (player.status === 'inactive') {
+          pill.classList.add('inactive');
+        }
+        pill.textContent =
+          player.status && player.status !== 'ready' && player.status !== 'waiting'
+            ? `${player.name} (${player.status})`
+            : player.name;
+        playersCell.appendChild(pill);
+      });
+    }
+
+    row.appendChild(playersCell);
+    elements.stageOccupancyBody.appendChild(row);
+  });
 }
 
 function renderPlayersTable() {
@@ -362,7 +593,36 @@ function renderAdminSummary() {
     return;
   }
 
-  elements.adminSummary.textContent = `Access granted as admin ${state.admin.name}.`;
+  const activePlayers = (state.players || []).filter(
+    (player) => player.role === 'player' && player.active !== false
+  ).length;
+
+  let statusMessage;
+  if (state.tournamentMode) {
+    statusMessage = 'Tournament in progress.';
+  } else if (activePlayers <= 1 && (state.players || []).length > 0) {
+    statusMessage = 'Tournament finished. Reset the game to start a new match.';
+  } else {
+    statusMessage = 'Waiting to start the next round.';
+  }
+
+  elements.adminSummary.textContent = `Access granted as admin ${state.admin.name}. Active players remaining: ${activePlayers}. ${statusMessage}`;
+
+  if (elements.startRoundButton) {
+    elements.startRoundButton.disabled = state.tournamentMode || activePlayers <= 1;
+  }
+  if (elements.addBotsButton) {
+    elements.addBotsButton.disabled = state.tournamentMode;
+  }
+  if (elements.botCountInput) {
+    elements.botCountInput.disabled = state.tournamentMode;
+  }
+  if (elements.botNamesInput) {
+    elements.botNamesInput.disabled = state.tournamentMode;
+  }
+  if (elements.botStrategySelect) {
+    elements.botStrategySelect.disabled = state.tournamentMode;
+  }
 }
 
 function updateCountdown() {
@@ -370,20 +630,60 @@ function updateCountdown() {
     return;
   }
 
+  const roundPhase =
+    state.round && typeof state.round.phase === 'string' ? state.round.phase : '';
+  const activePlayers = (state.players || []).filter(
+    (player) => player.role === 'player' && player.active !== false
+  ).length;
+
   if (!state.nextRoundStartsAt) {
-    elements.nextRoundTimer.textContent = '';
+    if (state.tournamentMode) {
+      if (roundPhase === 'duel') {
+        elements.nextRoundTimer.textContent = 'Duel in progress...';
+      } else if (roundPhase === 'processing' || roundPhase === 'competing') {
+        elements.nextRoundTimer.textContent = 'Round in progress...';
+      } else if (activePlayers <= 1 && state.lastOutcome) {
+        elements.nextRoundTimer.textContent = 'Tournament finished.';
+      } else {
+        elements.nextRoundTimer.textContent = 'Scheduling next round...';
+      }
+    } else {
+      if (roundPhase === 'duel') {
+        elements.nextRoundTimer.textContent = 'Duel in progress...';
+      } else if (activePlayers <= 1 && state.lastOutcome) {
+        elements.nextRoundTimer.textContent = 'Tournament finished.';
+      } else {
+        elements.nextRoundTimer.textContent = 'Waiting for you to start the next round.';
+      }
+    }
     return;
   }
 
   const targetTime = Date.parse(state.nextRoundStartsAt);
   if (Number.isNaN(targetTime)) {
-    elements.nextRoundTimer.textContent = '';
+    if (state.tournamentMode) {
+      if (roundPhase === 'duel') {
+        elements.nextRoundTimer.textContent = 'Duel in progress...';
+      } else if (roundPhase === 'processing' || roundPhase === 'competing') {
+        elements.nextRoundTimer.textContent = 'Round in progress...';
+      } else if (activePlayers <= 1 && state.lastOutcome) {
+        elements.nextRoundTimer.textContent = 'Tournament finished.';
+      } else {
+        elements.nextRoundTimer.textContent = 'Scheduling next round...';
+      }
+    } else if (roundPhase === 'duel') {
+      elements.nextRoundTimer.textContent = 'Duel in progress...';
+    } else if (activePlayers <= 1 && state.lastOutcome) {
+      elements.nextRoundTimer.textContent = 'Tournament finished.';
+    } else {
+      elements.nextRoundTimer.textContent = 'Waiting for you to start the next round.';
+    }
     return;
   }
 
   const diffMs = targetTime - Date.now();
   if (diffMs <= 0) {
-    elements.nextRoundTimer.textContent = 'Next auto round starting...';
+    elements.nextRoundTimer.textContent = 'Next round starting...';
     return;
   }
 
@@ -397,7 +697,7 @@ function updateCountdown() {
   }
   parts.push(`${seconds}s`);
 
-  elements.nextRoundTimer.textContent = `Next auto round in ${parts.join(' ')}.`;
+  elements.nextRoundTimer.textContent = `Next round begins in ${parts.join(' ')}.`;
 }
 
 function resolveNames(playerIds) {

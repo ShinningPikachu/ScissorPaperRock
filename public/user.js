@@ -7,7 +7,9 @@ const state = {
   availableMoves: [],
   lastOutcome: null,
   nextRoundStartsAt: null,
-  roundIntervalMs: null
+  roundIntervalMs: null,
+  tournamentMode: false,
+  activeTab: 'player-info'
 };
 
 const elements = {
@@ -17,7 +19,24 @@ const elements = {
   playerActions: document.getElementById('player-actions'),
   playerSummary: document.getElementById('player-summary'),
   playerStatus: document.getElementById('player-status'),
-  moveButtons: document.querySelectorAll('#player-actions .move-grid button'),
+  moveButtons: Array.from(
+    document.querySelectorAll('#player-actions .move-grid button')
+  ),
+  tabButtons: Array.from(
+    document.querySelectorAll('#player-actions .tab-button')
+  ),
+  tabPanels: Array.from(
+    document.querySelectorAll('#player-actions .tab-panel')
+  ),
+  moveTabButton: document.querySelector(
+    '#player-actions .tab-button[data-tab-target="move-selection"]'
+  ),
+  duelDisplay: document.getElementById('duel-display'),
+  duelFighterA: document.getElementById('duel-fighter-a'),
+  duelFighterB: document.getElementById('duel-fighter-b'),
+  duelSubtext: document.getElementById('duel-subtext'),
+  duelLineup: document.getElementById('duel-lineup'),
+  stageOccupancyBody: document.getElementById('stage-occupancy-body'),
   refreshButton: document.getElementById('refresh-button'),
   playersTableBody: document.getElementById('players-table-body'),
   roundOutcome: document.getElementById('round-outcome'),
@@ -30,6 +49,7 @@ const STORAGE_KEY = 'spr-current-player';
 function init() {
   restorePlayerFromSession();
   wireEventHandlers();
+  setActiveTab(state.activeTab, { focus: false });
   refreshState();
   setInterval(refreshState, 4000);
   setInterval(updateCountdown, 1000);
@@ -40,7 +60,16 @@ function wireEventHandlers() {
     elements.registrationForm.addEventListener('submit', onRegister);
   }
   elements.moveButtons.forEach((button) => {
-    button.addEventListener('click', () => onMoveSelected(button.dataset.move));
+    button.addEventListener('click', () => onMoveSelected(button.dataset.move || null));
+  });
+  elements.tabButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      if (button.disabled) {
+        return;
+      }
+      const target = button.dataset.tabTarget;
+      setActiveTab(target, { focus: true });
+    });
   });
   if (elements.refreshButton) {
     elements.refreshButton.addEventListener('click', refreshState);
@@ -78,13 +107,14 @@ async function onMoveSelected(move) {
   }
 
   try {
+    const selectedMove = move || null;
     const response = await api.request(`/api/players/${state.player.id}/move`, {
       method: 'POST',
-      body: { move }
+      body: { move: selectedMove }
     });
     state.player = response.player;
     persistPlayerToSession();
-    highlightSelectedMove(move);
+    highlightSelectedMove(selectedMove);
     showFeedback(elements.playerStatus, response.message, false);
     refreshState();
   } catch (error) {
@@ -101,6 +131,7 @@ async function refreshState() {
     state.lastOutcome = data.lastOutcome || null;
     state.nextRoundStartsAt = data.nextRoundStartsAt || null;
     state.roundIntervalMs = data.roundIntervalMs || state.roundIntervalMs;
+    state.tournamentMode = Boolean(data.tournamentMode);
     syncCurrentPlayer();
     renderState();
     updateCountdown();
@@ -130,7 +161,9 @@ function syncCurrentPlayer() {
 }
 
 function renderState() {
+  renderDuelDisplay();
   renderRoundOutcome();
+  renderStageOccupancy();
   renderStrategySummary();
   renderPlayersTable();
   updatePersonalSections();
@@ -175,6 +208,54 @@ function renderStrategySummary() {
   totalsRow.appendChild(createCell(totals.undecided));
   totalsRow.appendChild(createCell(totals.total));
   elements.strategySummaryBody.appendChild(totalsRow);
+}
+
+function renderStageOccupancy() {
+  if (!elements.stageOccupancyBody) {
+    return;
+  }
+
+  const groups = window.SPR.groupPlayersByStage(state.players);
+  elements.stageOccupancyBody.innerHTML = '';
+
+  if (groups.length === 0) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 2;
+    cell.textContent = 'No players on the board yet.';
+    row.appendChild(cell);
+    elements.stageOccupancyBody.appendChild(row);
+    return;
+  }
+
+  groups.forEach(({ layer, players }) => {
+    const row = document.createElement('tr');
+
+    row.appendChild(createCell(layer));
+
+    const playersCell = document.createElement('td');
+    if (players.length === 0) {
+      playersCell.textContent = '—';
+    } else {
+      players.forEach((player) => {
+        const pill = document.createElement('span');
+        pill.className = 'player-pill';
+        if (!player.active) {
+          pill.classList.add('eliminated');
+        } else if (player.status === 'inactive') {
+          pill.classList.add('inactive');
+        }
+        pill.textContent =
+          player.status && player.status !== 'ready' && player.status !== 'waiting'
+            ? `${player.name} (${player.status})`
+            : player.name;
+        playersCell.appendChild(pill);
+      });
+    }
+
+    row.appendChild(playersCell);
+    elements.stageOccupancyBody.appendChild(row);
+  });
 }
 
 function renderPlayersTable() {
@@ -243,9 +324,13 @@ function updatePersonalSections() {
   elements.playerActions.classList.toggle('hidden', !hasPlayer);
 
   if (!hasPlayer) {
+    if (elements.moveTabButton) {
+      elements.moveTabButton.disabled = true;
+    }
     highlightSelectedMove(null);
-    elements.playerStatus.textContent = '';
+    showFeedback(elements.playerStatus, '', false);
     elements.playerSummary.textContent = '';
+    setActiveTab('player-info', { focus: false });
     return;
   }
 
@@ -255,6 +340,36 @@ function updatePersonalSections() {
       : 0;
 
   elements.playerSummary.textContent = `Logged in as ${state.player.name} (Layer ${layerValue}).`;
+
+  const isEliminated = state.player.active === false;
+
+  elements.moveButtons.forEach((button) => {
+    if (!button) {
+      return;
+    }
+    button.disabled = isEliminated;
+  });
+  if (elements.moveTabButton) {
+    elements.moveTabButton.disabled = isEliminated;
+  }
+
+  if (isEliminated) {
+    highlightSelectedMove(null);
+    showFeedback(
+      elements.playerStatus,
+      'You have been eliminated from the tournament. Enjoy spectating the remaining rounds.',
+      true
+    );
+    if (state.activeTab === 'move-selection') {
+      setActiveTab('player-info', { focus: false });
+    }
+    return;
+  }
+
+  if (elements.moveTabButton) {
+    elements.moveTabButton.disabled = false;
+  }
+
   highlightSelectedMove(state.player.move);
 
   let message = '';
@@ -300,10 +415,98 @@ function resolveNames(playerIds) {
 }
 
 function highlightSelectedMove(move) {
+  const normalized = typeof move === 'string' ? move : null;
   elements.moveButtons.forEach((button) => {
-    const isSelected = button.dataset.move === move;
+    const buttonMove = button.dataset.move || null;
+    const isSelected = buttonMove === normalized;
     button.dataset.selected = isSelected ? 'true' : 'false';
   });
+}
+
+function setActiveTab(tabName, { focus = false } = {}) {
+  if (!tabName) {
+    return;
+  }
+
+  let matched = false;
+
+  elements.tabButtons.forEach((button) => {
+    const target = button.dataset.tabTarget;
+    const isActive = target === tabName;
+    if (isActive) {
+      matched = true;
+    }
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    if (isActive && focus) {
+      button.focus();
+    }
+  });
+
+  elements.tabPanels.forEach((panel) => {
+    const target = panel.dataset.tabPanel;
+    panel.classList.toggle('active', target === tabName);
+  });
+
+  if (matched) {
+    state.activeTab = tabName;
+  }
+}
+
+function renderDuelDisplay() {
+  if (!elements.duelDisplay) {
+    return;
+  }
+
+  const round = state.round || {};
+  const matchups = Array.isArray(round.matchups) ? round.matchups : [];
+
+  if (round.phase !== 'duel' || matchups.length === 0) {
+    elements.duelDisplay.classList.add('hidden');
+    elements.duelDisplay.classList.remove('active');
+    return;
+  }
+
+  elements.duelDisplay.classList.remove('hidden');
+  elements.duelDisplay.classList.add('active');
+
+  const safeIndex =
+    typeof round.currentMatchupIndex === 'number' && round.currentMatchupIndex >= 0
+      ? Math.min(round.currentMatchupIndex, matchups.length - 1)
+      : 0;
+  const currentMatchup = matchups[safeIndex] || matchups[0];
+
+  if (elements.duelFighterA) {
+    elements.duelFighterA.textContent = currentMatchup?.aName || 'Player A';
+  }
+  if (elements.duelFighterB) {
+    elements.duelFighterB.textContent =
+      currentMatchup?.bName || 'Awaiting opponent';
+  }
+
+  if (elements.duelSubtext) {
+    const totalPairs = matchups.length;
+    elements.duelSubtext.textContent =
+      totalPairs > 1
+        ? `Round ${round.number || ''}: ${totalPairs} duels lined up.`
+        : 'Clash in progress...';
+  }
+
+  if (elements.duelLineup) {
+    elements.duelLineup.innerHTML = '';
+    matchups.forEach((pair, index) => {
+      const item = document.createElement('li');
+      if (pair.bName) {
+        item.textContent = `${pair.aName} vs ${pair.bName}`;
+      } else {
+        item.textContent = `${pair.aName} advances with a bye`;
+      }
+      if (index === safeIndex) {
+        item.classList.add('active');
+      }
+      elements.duelLineup.appendChild(item);
+    });
+  }
 }
 
 function updateCountdown() {
@@ -311,20 +514,60 @@ function updateCountdown() {
     return;
   }
 
+  const roundPhase =
+    state.round && typeof state.round.phase === 'string' ? state.round.phase : '';
+  const activePlayers = (state.players || []).filter(
+    (player) => player.role === 'player' && player.active !== false
+  ).length;
+
   if (!state.nextRoundStartsAt) {
-    elements.nextRoundTimer.textContent = '';
+    if (state.tournamentMode) {
+      if (roundPhase === 'duel') {
+        elements.nextRoundTimer.textContent = 'Duel in progress...';
+      } else if (roundPhase === 'processing' || roundPhase === 'competing') {
+        elements.nextRoundTimer.textContent = 'Round in progress...';
+      } else if (activePlayers <= 1 && state.lastOutcome) {
+        elements.nextRoundTimer.textContent = 'Tournament finished.';
+      } else {
+        elements.nextRoundTimer.textContent = 'Scheduling next round...';
+      }
+    } else {
+      if (roundPhase === 'duel') {
+        elements.nextRoundTimer.textContent = 'Duel in progress...';
+      } else if (activePlayers <= 1 && state.lastOutcome) {
+        elements.nextRoundTimer.textContent = 'Tournament finished.';
+      } else {
+        elements.nextRoundTimer.textContent = 'Waiting for the admin to start the next round.';
+      }
+    }
     return;
   }
 
   const targetTime = Date.parse(state.nextRoundStartsAt);
   if (Number.isNaN(targetTime)) {
-    elements.nextRoundTimer.textContent = '';
+    if (state.tournamentMode) {
+      if (roundPhase === 'duel') {
+        elements.nextRoundTimer.textContent = 'Duel in progress...';
+      } else if (roundPhase === 'processing' || roundPhase === 'competing') {
+        elements.nextRoundTimer.textContent = 'Round in progress...';
+      } else if (activePlayers <= 1 && state.lastOutcome) {
+        elements.nextRoundTimer.textContent = 'Tournament finished.';
+      } else {
+        elements.nextRoundTimer.textContent = 'Scheduling next round...';
+      }
+    } else if (roundPhase === 'duel') {
+      elements.nextRoundTimer.textContent = 'Duel in progress...';
+    } else if (activePlayers <= 1 && state.lastOutcome) {
+      elements.nextRoundTimer.textContent = 'Tournament finished.';
+    } else {
+      elements.nextRoundTimer.textContent = 'Waiting for the admin to start the next round.';
+    }
     return;
   }
 
   const diffMs = targetTime - Date.now();
   if (diffMs <= 0) {
-    elements.nextRoundTimer.textContent = 'Next auto round starting...';
+    elements.nextRoundTimer.textContent = 'Next round starting...';
     return;
   }
 
@@ -338,7 +581,7 @@ function updateCountdown() {
   }
   parts.push(`${seconds}s`);
 
-  elements.nextRoundTimer.textContent = `Next auto round in ${parts.join(' ')}.`;
+  elements.nextRoundTimer.textContent = `Next round begins in ${parts.join(' ')}.`;
 }
 
 function restorePlayerFromSession() {

@@ -37,6 +37,34 @@
         <button id="start-round-button">Start Round</button>
         <button id="reset-game-button" class="secondary">Reset Game</button>
       </div>
+      <form id="add-bots-form" class="bot-form">
+        <div class="inline-form">
+          <label for="bot-count" class="inline-label">Add Bots</label>
+          <input
+            type="number"
+            id="bot-count"
+            name="bot-count"
+            min="1"
+            max="24"
+            value="3"
+          >
+          <select id="bot-strategy" name="bot-strategy" aria-label="Bot strategy">
+            <option value="random">Random</option>
+            <option value="rock">Always Rock</option>
+            <option value="paper">Always Paper</option>
+            <option value="scissors">Always Scissors</option>
+          </select>
+          <button type="submit" id="add-bots-button" class="secondary small">Add</button>
+        </div>
+        <textarea
+          id="bot-names"
+          name="bot-names"
+          placeholder="Optional: provide bot names, one per line or separated by commas."
+        ></textarea>
+        <p class="hint">
+          Leave the names blank to auto-generate unique bot names. Strategy applies to all bots added in this batch.
+        </p>
+      </form>
       <p id="admin-feedback" class="feedback"></p>
     </section>
 
@@ -45,8 +73,33 @@
         <h2>Match Status</h2>
         <button id="refresh-button" class="secondary small">Refresh</button>
       </div>
+      <div id="duel-display" class="duel-display hidden" aria-live="polite">
+        <div class="duel-card">
+          <div class="fighter fighter-a">
+            <span class="fighter-name" id="duel-fighter-a"></span>
+          </div>
+          <div class="versus">VS</div>
+          <div class="fighter fighter-b">
+            <span class="fighter-name" id="duel-fighter-b"></span>
+          </div>
+        </div>
+        <p class="duel-subtext" id="duel-subtext"></p>
+        <ul id="duel-lineup" class="duel-lineup"></ul>
+      </div>
       <p class="next-round" id="next-round-timer"></p>
       <div class="round-outcome" id="round-outcome"></div>
+      <div class="stage-occupancy">
+        <h3>Stage Occupancy</h3>
+        <table class="stage-occupancy-table">
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Players</th>
+            </tr>
+          </thead>
+          <tbody id="stage-occupancy-body"></tbody>
+        </table>
+      </div>
       <div class="strategy-summary">
         <h3>Strategy Breakdown</h3>
         <table class="strategy-table">

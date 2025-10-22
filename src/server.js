@@ -5,18 +5,29 @@ const { MOVES, ROLES, ROUND_INTERVAL_MS } = require('./game/constants');
 
 const app = express();
 const gameState = new GameState({ roundIntervalMs: ROUND_INTERVAL_MS });
-let autoRoundTimeout = null;
+let duelTimeout = null;
 let processingTimeout = null;
 let competitionTimeout = null;
+let tournamentModeEnabled = false;
+let autoContinueTimeout = null;
 
-const clearAutoRoundTimer = () => {
-  if (autoRoundTimeout) {
-    clearTimeout(autoRoundTimeout);
-    autoRoundTimeout = null;
+const buildStatePayload = () => ({
+  ...gameState.getPublicState(),
+  tournamentMode: tournamentModeEnabled
+});
+
+const clearAutoProgress = () => {
+  if (autoContinueTimeout) {
+    clearTimeout(autoContinueTimeout);
+    autoContinueTimeout = null;
   }
 };
 
 const clearLifecycleTimers = () => {
+  if (duelTimeout) {
+    clearTimeout(duelTimeout);
+    duelTimeout = null;
+  }
   if (processingTimeout) {
     clearTimeout(processingTimeout);
     processingTimeout = null;
@@ -27,24 +38,68 @@ const clearLifecycleTimers = () => {
   }
 };
 
+const stopTournament = () => {
+  tournamentModeEnabled = false;
+  clearAutoProgress();
+  gameState.setNextRoundAt(null);
+};
+
+const scheduleTournamentRound = () => {
+  clearAutoProgress();
+  if (!tournamentModeEnabled) {
+    return;
+  }
+
+  const activeCount = gameState.getActivePlayerCount();
+  if (activeCount <= 1) {
+    /* eslint-disable no-console */
+    if (activeCount === 1) {
+      console.log('Tournament concluded. A champion has been crowned.');
+    } else {
+      console.log('Tournament concluded. No active players remain.');
+    }
+    /* eslint-enable no-console */
+    stopTournament();
+    return;
+  }
+
+  gameState.scheduleNextRound(1_000);
+  autoContinueTimeout = setTimeout(() => {
+    autoContinueTimeout = null;
+    runTournamentRound();
+  }, 1_000);
+};
+
+const runTournamentRound = () => {
+  try {
+    const result = gameState.startRound({
+      triggeredBy: 'tournament',
+      skipAdminValidation: true,
+      requireAllReady: false
+    });
+
+    if (result.pending) {
+      scheduleRoundLifecycle();
+    } else {
+      scheduleTournamentRound();
+    }
+  } catch (error) {
+    /* eslint-disable no-console */
+    console.error('Tournament round failed:', error.message);
+    /* eslint-enable no-console */
+    stopTournament();
+  }
+};
+
 const handleRoundCompletion = () => {
   const outcome = gameState.completePendingRound();
 
-  if (outcome && outcome.triggeredBy === 'auto') {
-    /* eslint-disable no-console */
-    if (outcome.status !== 'skipped') {
-      console.log(
-        `Auto Round ${outcome.roundNumber}: ${outcome.message} (triggered=${outcome.triggeredBy})`
-      );
-    } else {
-      console.log(
-        `Auto Round ${outcome.roundNumber} skipped: ${outcome.message}`
-      );
+  if (outcome) {
+    gameState.setNextRoundAt(null);
+    if (tournamentModeEnabled) {
+      scheduleTournamentRound();
     }
-    /* eslint-enable no-console */
   }
-
-  queueNextAutoRound();
 };
 
 const scheduleRoundLifecycle = () => {
@@ -52,63 +107,60 @@ const scheduleRoundLifecycle = () => {
 
   const processingDelay = gameState.getProcessStageDuration();
   const competitionDelay = gameState.getCompetitionStageDuration();
+  const duelDelay = gameState.getDuelStageDuration();
 
-  processingTimeout = setTimeout(() => {
-    processingTimeout = null;
+  const scheduleCompetitionPhase = () => {
     gameState.beginCompetitionPhase();
-
+    const finalDelay = Math.max(competitionDelay, 0);
     competitionTimeout = setTimeout(() => {
       competitionTimeout = null;
       handleRoundCompletion();
-    }, competitionDelay);
-  }, processingDelay);
-};
+    }, finalDelay);
+  };
 
-const queueNextAutoRound = (delayMs = ROUND_INTERVAL_MS) => {
-  clearAutoRoundTimer();
-  if (!delayMs) {
-    return;
-  }
-  gameState.scheduleNextRound(delayMs);
-  autoRoundTimeout = setTimeout(() => {
-    runAutoRound();
-  }, delayMs);
-};
+  const scheduleProcessingPhase = () => {
+    gameState.beginProcessingPhase();
+    if (processingDelay <= 0) {
+      scheduleCompetitionPhase();
+      return;
+    }
+    processingTimeout = setTimeout(() => {
+      processingTimeout = null;
+      scheduleCompetitionPhase();
+    }, processingDelay);
+  };
 
-const runAutoRound = () => {
-  try {
-    const result = gameState.startRound({
-      triggeredBy: 'auto',
-      skipAdminValidation: true,
-      requireAllReady: false
-    });
+  const startDuelSequence = () => {
+    const matchups = Array.isArray(gameState.round.matchups)
+      ? gameState.round.matchups
+      : [];
 
-    if (result.pending) {
-      scheduleRoundLifecycle();
+    if (matchups.length === 0 || duelDelay <= 0) {
+      scheduleProcessingPhase();
       return;
     }
 
-    const outcome = result.outcome;
-    if (outcome) {
-      /* eslint-disable no-console */
-      if (outcome.status !== 'skipped') {
-        console.log(
-          `Auto Round ${outcome.roundNumber}: ${outcome.message} (triggered=${outcome.triggeredBy})`
-        );
-      } else {
-        console.log(
-          `Auto Round ${outcome.roundNumber} skipped: ${outcome.message}`
-        );
-      }
-      /* eslint-enable no-console */
-    }
+    const playDuel = (index) => {
+      gameState.advanceDuelMatchup(index);
 
-    queueNextAutoRound();
-  } catch (error) {
-    /* eslint-disable no-console */
-    console.error('Auto round failed:', error.message);
-    /* eslint-enable no-console */
-    queueNextAutoRound();
+      duelTimeout = setTimeout(() => {
+        duelTimeout = null;
+        const nextIndex = index + 1;
+        if (nextIndex < matchups.length) {
+          playDuel(nextIndex);
+        } else {
+          scheduleProcessingPhase();
+        }
+      }, duelDelay);
+    };
+
+    playDuel(0);
+  };
+
+  if (duelDelay > 0) {
+    startDuelSequence();
+  } else {
+    scheduleProcessingPhase();
   }
 };
 
@@ -121,7 +173,7 @@ app.get('/admin', (req, res) => {
 
 app.get('/api/state', (req, res) => {
   res.json({
-    ...gameState.getPublicState(),
+    ...buildStatePayload(),
     availableMoves: Object.values(MOVES)
   });
 });
@@ -186,7 +238,7 @@ app.post('/api/players/:playerId/move', (req, res, next) => {
 
 app.post('/api/bots', (req, res, next) => {
   try {
-    const { adminId, count } = req.body || {};
+    const { adminId, count, names, strategy } = req.body || {};
     if (!adminId) {
       throw new Error('Admin ID is required to add bots.');
     }
@@ -196,11 +248,33 @@ app.post('/api/bots', (req, res, next) => {
       throw new Error('Only an admin can add bots.');
     }
 
-    const bots = gameState.addBots(count);
+    let parsedNames = [];
+    if (typeof names === 'string') {
+      parsedNames = names
+        .split(/[\r\n,]+/)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+    } else if (Array.isArray(names)) {
+      parsedNames = names
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value.length > 0);
+    }
+
+    const bots = gameState.addBots({
+      count,
+      names: parsedNames,
+      strategy
+    });
+
+    const strategyLabel =
+      typeof strategy === 'string' && strategy.trim().length > 0
+        ? strategy.trim().toLowerCase()
+        : 'random';
+
     res.status(201).json({
       bots,
-      message: `${bots.length} bot${bots.length === 1 ? '' : 's'} added to the lobby.`,
-      state: gameState.getPublicState()
+      message: `${bots.length} bot${bots.length === 1 ? '' : 's'} added to the lobby using ${strategyLabel} strategy.`,
+      state: buildStatePayload()
     });
   } catch (error) {
     next(error);
@@ -215,15 +289,16 @@ app.post('/api/game/start', (req, res, next) => {
       triggeredBy: 'manual',
       requireAllReady: true
     });
+    tournamentModeEnabled = true;
+    clearAutoProgress();
     if (result.pending) {
-      clearAutoRoundTimer();
       scheduleRoundLifecycle();
     } else {
-      queueNextAutoRound();
+      scheduleTournamentRound();
     }
     res.json({
       outcome: result.outcome,
-      state: gameState.getPublicState()
+      state: buildStatePayload()
     });
   } catch (error) {
     next(error);
@@ -232,13 +307,12 @@ app.post('/api/game/start', (req, res, next) => {
 
 app.post('/api/game/reset', (req, res, next) => {
   try {
+    stopTournament();
     gameState.resetGame();
     clearLifecycleTimers();
-    clearAutoRoundTimer();
-    queueNextAutoRound();
     res.json({
       message: 'Game reset. All players cleared.',
-      state: gameState.getPublicState()
+      state: buildStatePayload()
     });
   } catch (error) {
     next(error);
@@ -261,5 +335,5 @@ app.listen(port, () => {
   /* eslint-disable no-console */
   console.log(`Server listening on http://localhost:${port}`);
   /* eslint-enable no-console */
-  queueNextAutoRound();
+  gameState.setNextRoundAt(null);
 });

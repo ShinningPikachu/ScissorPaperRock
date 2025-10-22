@@ -7,6 +7,7 @@ const {
   ROUND_INTERVAL_MS,
   PROCESS_STAGE_DURATION_MS,
   COMPETITION_STAGE_DURATION_MS,
+  DUEL_STAGE_DURATION_MS,
   MIN_STAGE,
   MAX_STAGE
 } = require('./constants');
@@ -15,11 +16,13 @@ class GameState {
   constructor({
     roundIntervalMs = ROUND_INTERVAL_MS,
     processStageMs = PROCESS_STAGE_DURATION_MS,
-    competitionStageMs = COMPETITION_STAGE_DURATION_MS
+    competitionStageMs = COMPETITION_STAGE_DURATION_MS,
+    duelStageMs = DUEL_STAGE_DURATION_MS
   } = {}) {
     this.roundIntervalMs = roundIntervalMs;
     this.processStageMs = processStageMs;
     this.competitionStageMs = competitionStageMs;
+    this.duelStageMs = duelStageMs;
     this.players = new Map();
     this.round = this.createRoundState(1);
     this.roundHistory = [];
@@ -38,7 +41,9 @@ class GameState {
       completedAt: null,
       outcome: null,
       phase: 'waiting',
-      phaseEndsAt: null
+      phaseEndsAt: null,
+      matchups: [],
+      currentMatchupIndex: null
     };
   }
 
@@ -59,7 +64,7 @@ class GameState {
     this.nextRoundAt = new Date(timestamp).toISOString();
   }
 
-  registerPlayer({ name, role, isBot = false }) {
+  registerPlayer({ name, role, isBot = false, botStrategy = 'random' }) {
     const trimmedName = (name || '').trim();
     if (!trimmedName) {
       throw new Error('Player name is required.');
@@ -70,7 +75,13 @@ class GameState {
     }
 
     const id = uuidv4();
-    const player = new Player({ id, name: trimmedName, role, isBot });
+    const player = new Player({
+      id,
+      name: trimmedName,
+      role,
+      isBot,
+      botStrategy: this.normalizeBotStrategy(botStrategy)
+    });
     this.players.set(id, player);
     return player.serialize();
   }
@@ -101,6 +112,9 @@ class GameState {
     const player = this.getPlayer(playerId);
     if (player.role !== ROLES.PLAYER) {
       throw new Error('Admins cannot submit a move.');
+    }
+    if (!player.isActivePlayer()) {
+      throw new Error('Eliminated players cannot submit a move.');
     }
 
     if (this.round.started) {
@@ -208,7 +222,7 @@ class GameState {
       throw new Error('At least one player must choose a move.');
     }
 
-    const outcome = this.resolveRound(readyPlayers);
+    const { outcome, matchups } = this.resolveRound(readyPlayers);
     const inactivePenalty = penalizeInactive
       ? this.applyInactivePenalty(inactivePlayers)
       : [];
@@ -218,8 +232,19 @@ class GameState {
     this.round.started = true;
     this.round.completed = false;
     this.round.startedAt = startedAt;
-    this.round.phase = 'processing';
-    this.round.phaseEndsAt = new Date(Date.now() + this.processStageMs).toISOString();
+    this.round.matchups = matchups;
+    if (matchups.length > 0 && this.duelStageMs > 0) {
+      this.advanceDuelMatchup(0);
+    } else {
+      this.round.currentMatchupIndex = matchups.length > 0 ? 0 : null;
+      if (this.processStageMs > 0) {
+        this.round.phase = 'processing';
+        this.round.phaseEndsAt = new Date(Date.now() + this.processStageMs).toISOString();
+      } else {
+        this.round.phase = 'processing';
+        this.round.phaseEndsAt = null;
+      }
+    }
     this.round.outcome = null;
     this.setNextRoundAt(null);
 
@@ -229,7 +254,7 @@ class GameState {
       options: { roundExecuted: true, startedAt }
     };
 
-    if (this.processStageMs <= 0 && this.competitionStageMs <= 0) {
+    if (this.duelStageMs <= 0 && this.processStageMs <= 0 && this.competitionStageMs <= 0) {
       const finalOutcome = this.completePendingRound();
       return {
         pending: false,
@@ -244,14 +269,15 @@ class GameState {
         message: 'Round started. Resolving soon.',
         roundNumber: this.round.number,
         triggeredBy,
-        startedAt
+        startedAt,
+        matchups
       }
     };
   }
 
   getParticipants() {
     return Array.from(this.players.values()).filter(
-      (player) => player.role === ROLES.PLAYER
+      (player) => player.role === ROLES.PLAYER && player.isActivePlayer()
     );
   }
 
@@ -262,31 +288,116 @@ class GameState {
     }
 
     for (const player of this.players.values()) {
-      if (player.role === ROLES.PLAYER && player.isBot) {
-        const nextMove = moveOptions[Math.floor(Math.random() * moveOptions.length)];
-        player.setMove(nextMove);
+      if (player.role !== ROLES.PLAYER || !player.isBot) {
+        continue;
       }
+
+      if (!player.isActivePlayer()) {
+        continue;
+      }
+
+      const strategy = player.botStrategy || 'random';
+      let nextMove;
+
+      if (strategy === 'random') {
+        nextMove = moveOptions[Math.floor(Math.random() * moveOptions.length)];
+      } else {
+        nextMove = strategy;
+      }
+
+      player.setMove(nextMove);
     }
   }
 
   generateBotName() {
-    while (true) {
-      const padded = this.botCounter.toString().padStart(2, '0');
-      this.botCounter += 1;
-      const candidate = `Bot ${padded}`;
-
-      const exists = Array.from(this.players.values()).some(
-        (player) => player.name === candidate
-      );
-
-      if (!exists) {
-        return candidate;
-      }
-    }
+    const padded = this.botCounter.toString().padStart(2, '0');
+    this.botCounter += 1;
+    return this.ensureUniqueBotName(`Bot ${padded}`);
   }
 
-  addBots(count) {
-    const requested = Number.parseInt(count, 10);
+  isNameTaken(name) {
+    return Array.from(this.players.values()).some((player) => player.name === name);
+  }
+
+  ensureUniqueBotName(baseName) {
+    const fallback =
+      typeof baseName === 'string' && baseName.trim().length > 0
+        ? baseName.trim()
+        : `Bot ${this.botCounter.toString().padStart(2, '0')}`;
+
+    let candidate = fallback;
+    let suffix = 2;
+
+    while (this.isNameTaken(candidate)) {
+      candidate = `${fallback} (${suffix})`;
+      suffix += 1;
+    }
+
+    return candidate;
+  }
+
+  normalizeBotStrategy(strategy) {
+    const value = typeof strategy === 'string' ? strategy.toLowerCase() : 'random';
+    if (value === 'random') {
+      return 'random';
+    }
+    if (Object.values(MOVES).includes(value)) {
+      return value;
+    }
+    return 'random';
+  }
+
+  getActivePlayerCount() {
+    return this.getParticipants().length;
+  }
+
+  advanceDuelMatchup(index) {
+    const matchups = Array.isArray(this.round.matchups) ? this.round.matchups : [];
+    if (matchups.length === 0) {
+      this.round.currentMatchupIndex = null;
+      this.round.phase = 'processing';
+      this.round.phaseEndsAt =
+        this.processStageMs > 0
+          ? new Date(Date.now() + this.processStageMs).toISOString()
+          : null;
+      return null;
+    }
+
+    const boundedIndex = Math.max(0, Math.min(index, matchups.length - 1));
+    this.round.phase = 'duel';
+    this.round.currentMatchupIndex = boundedIndex;
+    if (this.duelStageMs > 0) {
+      this.round.phaseEndsAt = new Date(Date.now() + this.duelStageMs).toISOString();
+    } else {
+      this.round.phaseEndsAt = null;
+    }
+    return matchups[boundedIndex];
+  }
+
+  getDuelStageDuration() {
+    return this.duelStageMs;
+  }
+
+  addBots({ count, names, strategy } = {}) {
+    if (this.round.started || this.pendingOutcome) {
+      throw new Error('Bots can only be added while waiting for the next round.');
+    }
+
+    const normalizedStrategy = this.normalizeBotStrategy(strategy);
+
+    const providedNames = Array.isArray(names)
+      ? names
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value.length > 0)
+      : [];
+
+    let requested = 0;
+    if (providedNames.length > 0) {
+      requested = providedNames.length;
+    } else {
+      requested = Number.parseInt(count, 10);
+    }
+
     if (!Number.isFinite(requested) || requested <= 0) {
       throw new Error('Number of bots must be a positive whole number.');
     }
@@ -295,14 +406,30 @@ class GameState {
       throw new Error('No more than 24 bots can be added at once.');
     }
 
-    if (this.round.started || this.pendingOutcome) {
-      throw new Error('Bots can only be added while waiting for the next round.');
+    const created = [];
+
+    if (providedNames.length > 0) {
+      providedNames.forEach((name) => {
+        const uniqueName = this.ensureUniqueBotName(name);
+        const bot = this.registerPlayer({
+          name: uniqueName,
+          role: ROLES.PLAYER,
+          isBot: true,
+          botStrategy: normalizedStrategy
+        });
+        created.push(bot);
+      });
+      return created;
     }
 
-    const created = [];
     for (let index = 0; index < requested; index += 1) {
       const name = this.generateBotName();
-      const bot = this.registerPlayer({ name, role: ROLES.PLAYER, isBot: true });
+      const bot = this.registerPlayer({
+        name,
+        role: ROLES.PLAYER,
+        isBot: true,
+        botStrategy: normalizedStrategy
+      });
       created.push(bot);
     }
 
@@ -328,128 +455,101 @@ class GameState {
     const orderedStages = Array.from(stageMap.keys()).sort((a, b) => b - a);
     const stageMessages = [];
     const winningMoves = new Set();
-    const eliminatedPlayerIds = [];
-    const winnerPlayerIds = [];
+    const eliminatedPlayerIds = new Set();
+    const winnerPlayerIds = new Set();
+    const matchups = [];
+
+    const compareMoves = (playerA, playerB) => {
+      const moveA = playerA.move;
+      const moveB = playerB.move;
+
+      if (moveA === moveB) {
+        return { result: 'tie', winner: null, loser: null };
+      }
+
+      if (BEATS[moveA] === moveB) {
+        return { result: 'a', winner: playerA, loser: playerB };
+      }
+
+      return { result: 'b', winner: playerB, loser: playerA };
+    };
 
     orderedStages.forEach((stage) => {
-      const result = this.resolveStage(stage, stageMap.get(stage));
-
-      if (!result) {
+      const players = [...stageMap.get(stage)];
+      if (players.length === 0) {
         return;
       }
 
-      (result.winningMoves || []).forEach((move) => winningMoves.add(move));
-
-      if (Array.isArray(result.eliminatedPlayerIds)) {
-        eliminatedPlayerIds.push(...result.eliminatedPlayerIds);
+      for (let index = players.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [players[index], players[swapIndex]] = [players[swapIndex], players[index]];
       }
 
-      if (Array.isArray(result.winnerPlayerIds)) {
-        winnerPlayerIds.push(...result.winnerPlayerIds);
-      }
+      const stageLabel = `Stage ${stage}`;
 
-      if (result.message) {
-        stageMessages.push(result.message);
+      for (let idx = 0; idx < players.length; idx += 2) {
+        const fighterA = players[idx];
+        const fighterB = players[idx + 1] || null;
+        const matchup = {
+          id: `duel-${this.round.number}-${stage}-${Math.floor(idx / 2) + 1}`,
+          stage,
+          aId: fighterA.id,
+          aName: fighterA.name,
+          bId: fighterB ? fighterB.id : null,
+          bName: fighterB ? fighterB.name : null,
+          result: 'pending'
+        };
+
+        if (!fighterB) {
+          matchup.result = 'bye';
+          matchups.push(matchup);
+          stageMessages.push(`${stageLabel}: ${fighterA.name} advances with a bye.`);
+          continue;
+        }
+
+        const outcome = compareMoves(fighterA, fighterB);
+
+        if (outcome.result === 'tie') {
+          matchup.result = 'tie';
+          matchups.push(matchup);
+          stageMessages.push(
+            `${stageLabel}: ${fighterA.name} and ${fighterB.name} tied with ${fighterA.move}.`
+          );
+          continue;
+        }
+
+        const winner = outcome.winner;
+        const loser = outcome.loser;
+        winningMoves.add(winner.move);
+        winnerPlayerIds.add(winner.id);
+        eliminatedPlayerIds.add(loser.id);
+        matchup.result = winner.id === fighterA.id ? 'a' : 'b';
+        matchups.push(matchup);
+
+        stageMessages.push(
+          `${stageLabel}: ${winner.name}'s ${winner.move} beats ${loser.name}'s ${loser.move}.`
+        );
       }
     });
 
-    let status = 'completed';
-    if (winnerPlayerIds.length === 0 && eliminatedPlayerIds.length === 0) {
-      status = 'tie';
-    }
+    const status =
+      winnerPlayerIds.size === 0 && eliminatedPlayerIds.size === 0 ? 'tie' : 'completed';
 
     const message =
       stageMessages.join(' ') ||
       (status === 'tie'
-        ? 'Every stage ended in a stalemate. Positions remain unchanged.'
-        : 'Stage battles resolved with updated standings.');
+        ? 'Every duel ended in a stalemate. Positions remain unchanged.'
+        : 'Duels resolved with updated standings.');
 
     return {
-      status,
-      message,
-      winningMoves: Array.from(winningMoves),
-      eliminatedPlayerIds,
-      winnerPlayerIds
-    };
-  }
-
-  resolveStage(stage, players) {
-    if (!Array.isArray(players) || players.length === 0) {
-      return {
-        status: 'idle',
-        message: '',
-        winningMoves: [],
-        eliminatedPlayerIds: [],
-        winnerPlayerIds: []
-      };
-    }
-
-    const stageLabel = `Stage ${stage}`;
-
-    if (players.length === 1) {
-      const [solo] = players;
-      const targetStage = stage >= 0 ? stage : stage + 1;
-      const message =
-        stage >= 0
-          ? `${stageLabel}: ${solo.name} holds position awaiting challengers.`
-          : `${stageLabel}: ${solo.name} advances to stage ${targetStage} by default.`;
-
-      return {
-        status: 'default',
+      outcome: {
+        status,
         message,
-        winningMoves: solo.move ? [solo.move] : [],
-        eliminatedPlayerIds: [],
-        winnerPlayerIds: [solo.id]
-      };
-    }
-
-    const movesChosen = new Set(players.map((player) => player.move));
-
-    if (movesChosen.size === 1) {
-      const [move] = movesChosen;
-      return {
-        status: 'tie',
-        message: `${stageLabel}: Everyone played ${move}. No one changes stage.`,
-        winningMoves: [],
-        eliminatedPlayerIds: [],
-        winnerPlayerIds: []
-      };
-    }
-
-    if (movesChosen.size === 3) {
-      return {
-        status: 'tie',
-        message: `${stageLabel}: All moves appeared. No one changes stage.`,
-        winningMoves: [],
-        eliminatedPlayerIds: [],
-        winnerPlayerIds: []
-      };
-    }
-
-    const [moveA, moveB] = Array.from(movesChosen);
-    const winningMove = BEATS[moveA] === moveB ? moveA : moveB;
-    const losingMove = winningMove === moveA ? moveB : moveA;
-
-    const eliminated = players
-      .filter((player) => player.move === losingMove)
-      .map((player) => player.id);
-    const winners = players
-      .filter((player) => player.move === winningMove)
-      .map((player) => player.id);
-
-    const winnersTargetStage = stage >= 0 ? stage : stage + 1;
-    const losersTargetStage = stage - 1;
-    const movementMessage =
-      stage >= 0
-        ? `Winners hold at stage ${winnersTargetStage}, losers fall to stage ${losersTargetStage}.`
-        : `Winners climb to stage ${winnersTargetStage}, losers fall to stage ${losersTargetStage}.`;
-
-    return {
-      status: 'completed',
-      message: `${stageLabel}: ${winningMove} beats ${losingMove}. ${movementMessage}`,
-      winningMoves: [winningMove],
-      eliminatedPlayerIds: eliminated,
-      winnerPlayerIds: winners
+        winningMoves: Array.from(winningMoves),
+        eliminatedPlayerIds: Array.from(eliminatedPlayerIds),
+        winnerPlayerIds: Array.from(winnerPlayerIds)
+      },
+      matchups
     };
   }
 
@@ -498,6 +598,17 @@ class GameState {
     });
   }
 
+  beginProcessingPhase() {
+    if (!this.pendingOutcome) {
+      return null;
+    }
+    const phaseEndsAt = new Date(Date.now() + this.processStageMs).toISOString();
+    this.round.phase = 'processing';
+    this.round.phaseEndsAt = phaseEndsAt;
+    this.round.currentMatchupIndex = null;
+    return phaseEndsAt;
+  }
+
   beginCompetitionPhase() {
     if (!this.pendingOutcome) {
       return null;
@@ -530,16 +641,15 @@ class GameState {
     const nowIso = new Date().toISOString();
     const effectiveStartedAt = roundExecuted ? startedAt || nowIso : null;
 
-    if (roundExecuted) {
-      this.applyOutcomeToPlayers(outcome);
-    }
+    this.applyOutcomeToPlayers(outcome);
 
     const fullOutcome = {
       ...outcome,
       roundNumber: this.round.number,
       triggeredBy,
       startedAt: effectiveStartedAt,
-      completedAt: nowIso
+      completedAt: nowIso,
+      matchups: Array.isArray(this.round.matchups) ? this.round.matchups : []
     };
 
     this.round.started = roundExecuted;
@@ -556,7 +666,8 @@ class GameState {
       started: roundExecuted,
       startedAt: effectiveStartedAt,
       completedAt: nowIso,
-      outcome: fullOutcome
+      outcome: fullOutcome,
+      matchups: fullOutcome.matchups
     });
 
     const nextNumber = this.round.number + 1;

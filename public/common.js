@@ -60,6 +60,10 @@
     };
 
     (Array.isArray(players) ? players : []).forEach((player) => {
+      if (!player || player.role !== 'player' || player.active === false) {
+        return;
+      }
+
       const layer =
         typeof player.layer === 'number' && Number.isFinite(player.layer)
           ? player.layer
@@ -97,11 +101,44 @@
     return { layers, totals };
   }
 
+  function groupPlayersByStage(players) {
+    const map = new Map();
+
+    (Array.isArray(players) ? players : []).forEach((player) => {
+      if (!player || player.role !== 'player') {
+        return;
+      }
+
+      const layer =
+        typeof player.layer === 'number' && Number.isFinite(player.layer)
+          ? player.layer
+          : 0;
+
+      if (!map.has(layer)) {
+        map.set(layer, []);
+      }
+      map.get(layer).push({
+        id: player.id,
+        name: player.name,
+        active: player.active !== false,
+        status: player.status
+      });
+    });
+
+    return Array.from(map.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([layer, members]) => ({
+        layer,
+        players: members.sort((a, b) => a.name.localeCompare(b.name))
+      }));
+  }
+
   window.SPR = {
     api,
     showFeedback,
     capitalize,
     formatRoundMeta,
-    summarizeStrategiesByLayer
+    summarizeStrategiesByLayer,
+    groupPlayersByStage
   };
 })();

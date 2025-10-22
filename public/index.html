@@ -26,12 +26,47 @@
       <p id="registration-feedback" class="feedback"></p>
     </section>
 
-    <section id="player-actions" class="panel hidden">
-      <h2>Choose Your Strategy</h2>
-      <p id="player-summary"></p>
-      <p class="hint">Set the move you want to play whenever you are on a stage. Update them anytime.</p>
-      <div id="stage-strategies" class="stage-strategy-list"></div>
-      <p id="player-status" class="feedback"></p>
+  <section id="player-actions" class="panel hidden">
+      <h2>Player Console</h2>
+      <div class="tab-nav" role="tablist">
+        <button type="button" class="tab-button active" data-tab-target="player-info">Your Status</button>
+        <button type="button" class="tab-button" data-tab-target="strategy-summary">Stage Strategies</button>
+        <button type="button" class="tab-button" data-tab-target="move-selection">Set Strategy</button>
+      </div>
+      <div class="tab-panels">
+        <section class="tab-panel active" data-tab-panel="player-info">
+          <p id="player-summary"></p>
+          <p class="hint">Review your current stage and how the last round affected you.</p>
+          <p id="player-status" class="feedback"></p>
+        </section>
+        <section class="tab-panel" data-tab-panel="strategy-summary">
+          <p class="hint">Quick view of strategies chosen at each stage by active players.</p>
+          <div class="strategy-summary">
+            <table class="strategy-table">
+              <thead>
+                <tr>
+                  <th>Layer</th>
+                  <th>Rock</th>
+                  <th>Paper</th>
+                  <th>Scissors</th>
+                  <th>Undecided</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="strategy-summary-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="tab-panel" data-tab-panel="move-selection">
+          <p class="hint">Choose the strategy you want to lock in for the next round.</p>
+          <div class="move-grid">
+            <button type="button" data-move="rock">Rock</button>
+            <button type="button" data-move="paper">Paper</button>
+            <button type="button" data-move="scissors">Scissors</button>
+            <button type="button" data-move="" class="secondary">Clear</button>
+          </div>
+        </section>
+      </div>
     </section>
 
     <section id="game-state" class="panel">
@@ -39,22 +74,31 @@
         <h2>Current Lobby</h2>
         <button id="refresh-button" class="secondary small">Refresh</button>
       </div>
+      <div id="duel-display" class="duel-display hidden" aria-live="polite">
+        <div class="duel-card">
+          <div class="fighter fighter-a">
+            <span class="fighter-name" id="duel-fighter-a"></span>
+          </div>
+          <div class="versus">VS</div>
+          <div class="fighter fighter-b">
+            <span class="fighter-name" id="duel-fighter-b"></span>
+          </div>
+        </div>
+        <p class="duel-subtext" id="duel-subtext"></p>
+        <ul id="duel-lineup" class="duel-lineup"></ul>
+      </div>
       <p class="next-round" id="next-round-timer"></p>
       <div class="round-outcome" id="round-outcome"></div>
-      <div class="strategy-summary">
-        <h3>Strategy Breakdown</h3>
-        <table class="strategy-table">
+      <div class="stage-occupancy">
+        <h3>Stage Occupancy</h3>
+        <table class="stage-occupancy-table">
           <thead>
             <tr>
               <th>Layer</th>
-              <th>Rock</th>
-              <th>Paper</th>
-              <th>Scissors</th>
-              <th>Undecided</th>
-              <th>Total</th>
+              <th>Players</th>
             </tr>
           </thead>
-          <tbody id="strategy-summary-body"></tbody>
+          <tbody id="stage-occupancy-body"></tbody>
         </table>
       </div>
       <table>

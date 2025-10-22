@@ -138,6 +138,221 @@ button:disabled {
   opacity: 0.6;
 }
 
+.inline-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bot-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.bot-form textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  resize: vertical;
+}
+
+.inline-form input[type="number"] {
+  width: 4.5rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.inline-label {
+  font-weight: 600;
+}
+
+.tab-nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.tab-button {
+  background: transparent;
+  border: 1px solid rgba(59, 201, 219, 0.35);
+  color: var(--accent);
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.tab-button.active,
+.tab-button:hover:not(:disabled) {
+  background: rgba(59, 201, 219, 0.2);
+  color: var(--white);
+  transform: translateY(-1px);
+}
+
+.tab-panels {
+  position: relative;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.duel-display {
+  background: rgba(59, 201, 219, 0.08);
+  border: 1px solid rgba(59, 201, 219, 0.2);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  text-align: center;
+  box-shadow: 0 12px 30px rgba(15, 64, 92, 0.25);
+}
+
+.duel-card {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.duel-card .fighter {
+  flex: 1;
+  max-width: 220px;
+  padding: 1rem;
+  border-radius: 12px;
+  background: rgba(15, 52, 71, 0.6);
+  border: 1px solid rgba(59, 201, 219, 0.25);
+}
+
+.duel-display.active .fighter {
+  animation: duelPulse 0.9s ease-in-out infinite alternate;
+}
+
+.duel-card .fighter-name {
+  display: block;
+  font-size: 1.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.duel-card .versus {
+  font-size: 2rem;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+}
+
+.duel-subtext {
+  margin: 1rem 0 0.5rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.duel-lineup {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.duel-lineup li {
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(59, 201, 219, 0.12);
+  border: 1px solid rgba(59, 201, 219, 0.25);
+  font-size: 0.85rem;
+}
+
+.duel-lineup li.active {
+  background: rgba(59, 201, 219, 0.28);
+  color: var(--white);
+  font-weight: 600;
+  border-color: rgba(59, 201, 219, 0.45);
+}
+
+@keyframes duelPulse {
+  from {
+    transform: translateY(0);
+    box-shadow: 0 0 12px rgba(59, 201, 219, 0.25);
+  }
+  to {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 18px rgba(59, 201, 219, 0.4);
+  }
+}
+
+.stage-occupancy {
+  margin: 1rem 0 1.5rem;
+}
+
+.stage-occupancy-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.stage-occupancy-table th,
+.stage-occupancy-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid rgba(59, 201, 219, 0.1);
+  text-align: left;
+}
+
+.stage-occupancy-table tbody tr:hover {
+  background: rgba(59, 201, 219, 0.08);
+}
+
+.stage-occupancy-table .player-pill {
+  display: inline-block;
+  margin: 0.15rem 0.25rem 0.15rem 0;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(59, 201, 219, 0.18);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.stage-occupancy-table .player-pill.inactive {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--danger);
+}
+
+.stage-occupancy-table .player-pill.eliminated {
+  background: rgba(148, 163, 184, 0.2);
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.move-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.move-grid button {
+  width: 100%;
+}
+
+.move-grid button[data-selected="true"] {
+  background: var(--accent-dark);
+  transform: translateY(-2px);
+}
+
 .secondary {
   background: transparent;
   border: 1px solid var(--accent);
