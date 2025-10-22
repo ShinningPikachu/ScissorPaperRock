@@ -39,16 +39,6 @@
     return value.charAt(0).toUpperCase() + value.slice(1);
   }
 
-  function formatRole(player) {
-    if (!player || typeof player !== 'object') {
-      return '';
-    }
-    if (player.isBot) {
-      return 'Bot';
-    }
-    return capitalize(player.role);
-  }
-
   function formatRoundMeta(label, names) {
     if (!Array.isArray(names) || names.length === 0) {
       return '';
@@ -101,7 +91,7 @@
     });
 
     const layers = Array.from(summary.entries())
-      .sort((a, b) => b[0] - a[0])
+      .sort((a, b) => a[0] - b[0])
       .map(([layer, counts]) => ({ layer, counts }));
 
     return { layers, totals };
@@ -111,7 +101,6 @@
     api,
     showFeedback,
     capitalize,
-    formatRole,
     formatRoundMeta,
     summarizeStrategiesByLayer
   };

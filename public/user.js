@@ -1,6 +1,4 @@
-const { api, showFeedback, capitalize, formatRoundMeta, formatRole } = window.SPR;
-
-const STAGE_RANGE = Array.from({ length: 10 }, (_, index) => 0 - index);
+const { api, showFeedback, capitalize, formatRoundMeta } = window.SPR;
 
 const state = {
   player: null,
@@ -19,7 +17,7 @@ const elements = {
   playerActions: document.getElementById('player-actions'),
   playerSummary: document.getElementById('player-summary'),
   playerStatus: document.getElementById('player-status'),
-  stageStrategies: document.getElementById('stage-strategies'),
+  moveButtons: document.querySelectorAll('#player-actions .move-grid button'),
   refreshButton: document.getElementById('refresh-button'),
   playersTableBody: document.getElementById('players-table-body'),
   roundOutcome: document.getElementById('round-outcome'),
@@ -28,12 +26,10 @@ const elements = {
 };
 
 const STORAGE_KEY = 'spr-current-player';
-const stageSelects = new Map();
 
 function init() {
   restorePlayerFromSession();
   wireEventHandlers();
-  buildStageStrategyControls();
   refreshState();
   setInterval(refreshState, 4000);
   setInterval(updateCountdown, 1000);
@@ -43,55 +39,12 @@ function wireEventHandlers() {
   if (elements.registrationForm) {
     elements.registrationForm.addEventListener('submit', onRegister);
   }
+  elements.moveButtons.forEach((button) => {
+    button.addEventListener('click', () => onMoveSelected(button.dataset.move));
+  });
   if (elements.refreshButton) {
     elements.refreshButton.addEventListener('click', refreshState);
   }
-}
-
-function buildStageStrategyControls() {
-  if (!elements.stageStrategies) {
-    return;
-  }
-
-  elements.stageStrategies.innerHTML = '';
-  stageSelects.clear();
-
-  STAGE_RANGE.forEach((stage) => {
-    const row = document.createElement('div');
-    row.className = 'stage-strategy-row';
-    row.dataset.stageRow = stage;
-
-    const label = document.createElement('span');
-    label.className = 'stage-label';
-    label.textContent = stage === 0 ? 'Stage 0 (Top)' : `Stage ${stage}`;
-
-    const select = document.createElement('select');
-    select.dataset.stageSelect = stage;
-    select.disabled = true;
-
-    const options = [
-      { value: '', label: 'Unset' },
-      { value: 'rock', label: 'Rock' },
-      { value: 'paper', label: 'Paper' },
-      { value: 'scissors', label: 'Scissors' }
-    ];
-
-    options.forEach(({ value, label: optionLabel }) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = optionLabel;
-      select.appendChild(option);
-    });
-
-    select.addEventListener('change', () => {
-      onStageStrategyChange(stage, select.value);
-    });
-
-    row.appendChild(label);
-    row.appendChild(select);
-    elements.stageStrategies.appendChild(row);
-    stageSelects.set(stage, select);
-  });
 }
 
 async function onRegister(event) {
@@ -119,45 +72,23 @@ async function onRegister(event) {
   }
 }
 
-async function onStageStrategyChange(stage, moveValue) {
-  const stageNumber = Number.parseInt(stage, 10);
-  if (!Number.isFinite(stageNumber)) {
-    return;
-  }
-
-  const select = stageSelects.get(stageNumber);
-
+async function onMoveSelected(move) {
   if (!state.player || state.player.role !== 'player') {
-    if (select) {
-      select.value = '';
-    }
-    showFeedback(
-      elements.playerStatus,
-      'Register as a player before configuring strategies.',
-      true
-    );
     return;
   }
-
-  const normalizedMove = (moveValue || '').toLowerCase();
 
   try {
     const response = await api.request(`/api/players/${state.player.id}/move`, {
       method: 'POST',
-      body: { move: normalizedMove || null, stage: stageNumber }
+      body: { move }
     });
     state.player = response.player;
     persistPlayerToSession();
-    await refreshState();
+    highlightSelectedMove(move);
     showFeedback(elements.playerStatus, response.message, false);
+    refreshState();
   } catch (error) {
     showFeedback(elements.playerStatus, error.message, true);
-
-    const strategies = state.player?.stageStrategies || {};
-    const fallback = strategies[stageNumber.toString()] || '';
-    if (select) {
-      select.value = fallback;
-    }
   }
 }
 
@@ -199,35 +130,10 @@ function syncCurrentPlayer() {
 }
 
 function renderState() {
-  renderStageStrategyControls();
   renderRoundOutcome();
   renderStrategySummary();
   renderPlayersTable();
   updatePersonalSections();
-}
-
-function renderStageStrategyControls() {
-  if (!elements.stageStrategies || stageSelects.size === 0) {
-    return;
-  }
-
-  const strategies = state.player?.stageStrategies || {};
-  const currentStage = Number.isFinite(state.player?.layer) ? state.player.layer : null;
-  const hasPlayer = Boolean(state.player);
-
-  stageSelects.forEach((select, stage) => {
-    const stageKey = stage.toString();
-    const desiredValue = strategies[stageKey] || '';
-    if (select.value !== desiredValue) {
-      select.value = desiredValue;
-    }
-    select.disabled = !hasPlayer;
-
-    const row = select.closest('[data-stage-row]');
-    if (row) {
-      row.classList.toggle('current-stage', hasPlayer && currentStage === stage);
-    }
-  });
 }
 
 function renderStrategySummary() {
@@ -281,8 +187,7 @@ function renderPlayersTable() {
     const row = document.createElement('tr');
 
     row.appendChild(createCell(player.name));
-    const roleLabel = formatRole(player) || capitalize(player.role);
-    row.appendChild(createCell(roleLabel));
+    row.appendChild(createCell(capitalize(player.role)));
 
     const layerValue =
       typeof player.layer === 'number' && Number.isFinite(player.layer)
@@ -307,30 +212,6 @@ function renderRoundOutcome() {
     return;
   }
 
-  const roundInfo = state.round || {};
-  const phase = roundInfo.phase;
-
-  if (phase === 'processing' || phase === 'competing') {
-    const phaseMessage =
-      phase === 'processing'
-        ? 'Players are locking in. Competition begins shortly.'
-        : 'Competition underway! Hang tight for the results.';
-    const animation =
-      phase === 'competing'
-        ? '<div class="phase-visual"><span></span><span></span><span></span></div>'
-        : '';
-
-    elements.roundOutcome.innerHTML = `
-      <div class="round-phase ${phase}">
-        <div class="phase-message">${phaseMessage}</div>
-        ${animation}
-        <div class="phase-countdown" data-phase-countdown="${phase}"></div>
-      </div>
-    `;
-    updatePhaseCountdown();
-    return;
-  }
-
   const outcome = state.lastOutcome;
   if (!outcome) {
     elements.roundOutcome.textContent = 'Waiting for the first round to complete.';
@@ -346,45 +227,11 @@ function renderRoundOutcome() {
   const details = [
     `<strong>${roundLabel}</strong> ${message}`,
     formatRoundMeta('Winners', resolveNames(outcome.winnerPlayerIds)),
-    formatRoundMeta('Dropped a stage', resolveNames(outcome.eliminatedPlayerIds)),
+    formatRoundMeta('Down a layer', resolveNames(outcome.eliminatedPlayerIds)),
     formatRoundMeta('Missed the round', resolveNames(outcome.inactivePlayerIds))
   ];
 
   elements.roundOutcome.innerHTML = details.filter(Boolean).join(' ');
-}
-
-function updatePhaseCountdown() {
-  if (!elements.roundOutcome) {
-    return;
-  }
-
-  const countdownElement = elements.roundOutcome.querySelector('[data-phase-countdown]');
-  const roundInfo = state.round || {};
-  const phase = roundInfo.phase;
-
-  if (!countdownElement || (phase !== 'processing' && phase !== 'competing')) {
-    if (countdownElement) {
-      countdownElement.textContent = '';
-    }
-    return;
-  }
-
-  const endsAt = Date.parse(roundInfo.phaseEndsAt || '');
-  if (Number.isNaN(endsAt)) {
-    countdownElement.textContent = '';
-    return;
-  }
-
-  const remainingMs = endsAt - Date.now();
-  if (remainingMs <= 0) {
-    countdownElement.textContent =
-      phase === 'processing' ? 'Competition starting...' : 'Resolving...';
-    return;
-  }
-
-  const remainingSeconds = Math.ceil(remainingMs / 1000);
-  const label = phase === 'processing' ? 'Competition starts in' : 'Resolving in';
-  countdownElement.textContent = `${label} ${remainingSeconds}s`;
 }
 
 function updatePersonalSections() {
@@ -396,6 +243,7 @@ function updatePersonalSections() {
   elements.playerActions.classList.toggle('hidden', !hasPlayer);
 
   if (!hasPlayer) {
+    highlightSelectedMove(null);
     elements.playerStatus.textContent = '';
     elements.playerSummary.textContent = '';
     return;
@@ -406,39 +254,31 @@ function updatePersonalSections() {
       ? state.player.layer
       : 0;
 
-  const stageMove = state.player.stageStrategies?.[layerValue.toString()] || '';
-
-  elements.playerSummary.textContent = `Logged in as ${state.player.name}. Current stage: ${layerValue}.`;
+  elements.playerSummary.textContent = `Logged in as ${state.player.name} (Layer ${layerValue}).`;
+  highlightSelectedMove(state.player.move);
 
   let message = '';
   let isError = false;
   switch (state.player.status) {
     case 'eliminated':
-      message = `You lost the last round. You are now on stage ${layerValue}.`;
+      message = `You lost the last round. You are now on layer ${layerValue}.`;
       isError = true;
       break;
     case 'inactive':
-      message = `You missed the last round. You are now on stage ${layerValue}.`;
+      message = `You missed the last round. You are now on layer ${layerValue}.`;
       isError = true;
       break;
     case 'winner':
-      message = `You won the last round! You are now on stage ${layerValue}.`;
+      message = `You won the last round! You remain on layer ${layerValue}.`;
       break;
     case 'ready':
-      message = 'Stage strategy locked. Waiting for the next round.';
+      message = 'Strategy locked. Waiting for the next round.';
       break;
     case 'waiting':
     default:
       message = 'Choose your strategy to lock it in before the next round.';
       break;
   }
-
-  if (stageMove) {
-    message += ` Current stage strategy: ${capitalize(stageMove)}.`;
-  } else {
-    message += ` Set a strategy for stage ${layerValue} to be ready.`;
-  }
-
   showFeedback(elements.playerStatus, message, isError);
 }
 
@@ -459,9 +299,14 @@ function resolveNames(playerIds) {
     .map((player) => player.name);
 }
 
-function updateCountdown() {
-  updatePhaseCountdown();
+function highlightSelectedMove(move) {
+  elements.moveButtons.forEach((button) => {
+    const isSelected = button.dataset.move === move;
+    button.dataset.selected = isSelected ? 'true' : 'false';
+  });
+}
 
+function updateCountdown() {
   if (!elements.nextRoundTimer) {
     return;
   }
