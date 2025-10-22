@@ -29,11 +29,8 @@
     <section id="player-actions" class="panel hidden">
       <h2>Choose Your Strategy</h2>
       <p id="player-summary"></p>
-      <div class="move-grid">
-        <button data-move="rock">Rock</button>
-        <button data-move="paper">Paper</button>
-        <button data-move="scissors">Scissors</button>
-      </div>
+      <p class="hint">Set the move you want to play whenever you are on a stage. Update them anytime.</p>
+      <div id="stage-strategies" class="stage-strategy-list"></div>
       <p id="player-status" class="feedback"></p>
     </section>
 
@@ -65,7 +62,7 @@
           <tr>
             <th>Name</th>
             <th>Role</th>
-            <th>Layer</th>
+            <th>Stage</th>
             <th>Status</th>
             <th>Strategy</th>
           </tr>

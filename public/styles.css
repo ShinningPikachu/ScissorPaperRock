@@ -88,7 +88,9 @@ h1 {
   font-weight: 600;
 }
 
-input[type="text"] {
+input[type="text"],
+input[type="password"],
+input[type="number"] {
   padding: 0.6rem 0.75rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -96,7 +98,9 @@ input[type="text"] {
   color: var(--text);
 }
 
-input[type="text"]::placeholder {
+input[type="text"]::placeholder,
+input[type="password"]::placeholder,
+input[type="number"]::placeholder {
   color: rgba(241, 245, 249, 0.5);
 }
 
@@ -149,15 +153,61 @@ button:disabled {
   font-size: 0.9rem;
 }
 
-.move-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
+.hint {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 
-.move-grid button[data-selected="true"] {
-  background: var(--success);
+.stage-strategy-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.stage-strategy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(59, 201, 219, 0.12);
+  transition: border 0.2s ease, transform 0.2s ease;
+}
+
+.stage-strategy-row.current-stage {
+  border-color: rgba(59, 201, 219, 0.6);
+  transform: translateY(-1px);
+}
+
+.stage-label {
+  font-weight: 600;
+}
+
+.stage-strategy-row select {
+  min-width: 140px;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+}
+
+.stage-strategy-row select:focus {
+  outline: none;
+  border-color: rgba(59, 201, 219, 0.7);
+}
+
+@media (max-width: 640px) {
+  .stage-strategy-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .stage-strategy-row select {
+    width: 100%;
+  }
 }
 
 .feedback {
