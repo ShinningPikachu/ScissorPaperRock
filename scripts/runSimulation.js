@@ -1,5 +1,5 @@
 const GameState = require('../src/game/gameState');
-const { MOVES, ROLES, PLAYER_STATUS } = require('../src/game/constants');
+const { MOVES, ROLES } = require('../src/game/constants');
 
 const TOTAL_PLAYERS = 20;
 const ROUNDS_TO_PLAY = 5;
@@ -9,7 +9,11 @@ const ROUND_MOVE_SETS = [
   [MOVES.PAPER, MOVES.ROCK]
 ];
 
-const game = new GameState({ roundIntervalMs: 0 });
+const game = new GameState({
+  roundIntervalMs: 0,
+  processStageMs: 0,
+  competitionStageMs: 0
+});
 const admin = game.registerPlayer({ name: 'Sim Admin', role: ROLES.ADMIN });
 const players = [];
 
@@ -34,8 +38,7 @@ for (let round = 1; round <= ROUNDS_TO_PLAY; round += 1) {
     const shouldSkipThisRound = round % 2 === 1 && idx % 6 === 0;
 
     if (shouldSkipThisRound) {
-      playerEntity.move = null;
-      playerEntity.status = PLAYER_STATUS.WAITING;
+      playerEntity.setMove(null);
       return;
     }
 
@@ -43,7 +46,7 @@ for (let round = 1; round <= ROUNDS_TO_PLAY; round += 1) {
     game.setPlayerMove(playerMeta.id, move);
   });
 
-  const outcome = game.startRound({
+  const { outcome } = game.startRound({
     triggeredBy: 'simulation',
     skipAdminValidation: true,
     requireAllReady: false
@@ -65,7 +68,7 @@ for (let round = 1; round <= ROUNDS_TO_PLAY; round += 1) {
       Name: player.name,
       Move: player.move,
       Status: player.status,
-      Layer: player.layer
+      Stage: player.layer
     }));
 
   console.table(tableData);
