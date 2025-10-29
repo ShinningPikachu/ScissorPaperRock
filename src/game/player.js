@@ -1,4 +1,4 @@
-const { PLAYER_STATUS, ROLES, MIN_STAGE, MAX_STAGE, MOVES } = require('./constants');
+const { PLAYER_STATUS, ROLES, MIN_STAGE, MOVES } = require('./constants');
 
 const BOT_STRATEGIES = new Set([
   'random',
@@ -78,21 +78,48 @@ class Player {
 
   eliminate() {
     if (this.role === ROLES.PLAYER) {
-      this.isActive = false;
-      this.layer = Math.max(this.layer - 1, MIN_STAGE);
       this.move = null;
+      this.lastMoveAt = null;
+      this.isActive = false;
     }
     this.status = PLAYER_STATUS.ELIMINATED;
+  }
+
+  demote() {
+    if (this.role !== ROLES.PLAYER) {
+      return;
+    }
+
+    const nextLayer = Math.max(this.layer - 1, MIN_STAGE);
+    this.layer = nextLayer;
+    this.isActive = true;
+    this.move = null;
+    this.lastMoveAt = null;
+    this.updateMoveForCurrentStage();
+    this.status = this.move ? PLAYER_STATUS.READY : PLAYER_STATUS.WAITING;
+  }
+
+  resetToBaseLayer() {
+    if (this.role !== ROLES.PLAYER) {
+      return;
+    }
+
+    this.layer = 0;
+    this.isActive = true;
+
+    const strategy = this.stageStrategies['0'] || null;
+    this.move = strategy;
+    if (strategy) {
+      this.status = PLAYER_STATUS.READY;
+    } else {
+      this.status = PLAYER_STATUS.WAITING;
+      this.lastMoveAt = null;
+    }
   }
 
   markWinner() {
     if (this.role === ROLES.PLAYER) {
       this.isActive = true;
-      if (this.layer > MAX_STAGE) {
-        this.layer = Math.max(this.layer - 1, MIN_STAGE);
-      } else if (this.layer < MAX_STAGE) {
-        this.layer = Math.min(MAX_STAGE, this.layer + 1);
-      }
       this.updateMoveForCurrentStage();
     }
     this.status = PLAYER_STATUS.WINNER;
@@ -100,9 +127,7 @@ class Player {
 
   markInactive() {
     if (this.role === ROLES.PLAYER) {
-      this.layer = Math.max(this.layer - 1, MIN_STAGE);
-      this.isActive = true;
-      this.updateMoveForCurrentStage();
+      this.demote();
     }
     this.status = PLAYER_STATUS.INACTIVE;
   }

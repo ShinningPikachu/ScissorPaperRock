@@ -73,7 +73,8 @@ for (let round = 1; round <= ROUNDS_TO_PLAY; round += 1) {
     message: outcome.message,
     roundNumber: outcome.roundNumber,
     winners: outcome.winnerPlayerIds?.length || 0,
-    losers: outcome.eliminatedPlayerIds?.length || 0,
+    demoted: outcome.demotedPlayerIds?.length || 0,
+    eliminated: outcome.eliminatedPlayerIds?.length || 0,
     inactive: outcome.inactivePlayerIds?.length || 0
   });
 

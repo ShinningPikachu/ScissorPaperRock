@@ -63,11 +63,12 @@ const scheduleTournamentRound = () => {
     return;
   }
 
-  gameState.scheduleNextRound(1_000);
+  const delay = Math.max(gameState.roundIntervalMs || ROUND_INTERVAL_MS, 0);
+  gameState.scheduleNextRound(delay);
   autoContinueTimeout = setTimeout(() => {
     autoContinueTimeout = null;
     runTournamentRound();
-  }, 1_000);
+  }, delay);
 };
 
 const runTournamentRound = () => {
@@ -95,7 +96,6 @@ const handleRoundCompletion = () => {
   const outcome = gameState.completePendingRound();
 
   if (outcome) {
-    gameState.setNextRoundAt(null);
     if (tournamentModeEnabled) {
       scheduleTournamentRound();
     }
@@ -136,6 +136,7 @@ const scheduleRoundLifecycle = () => {
       : [];
 
     if (matchups.length === 0 || duelDelay <= 0) {
+      gameState.revealAllMatchups();
       scheduleProcessingPhase();
       return;
     }
@@ -145,6 +146,7 @@ const scheduleRoundLifecycle = () => {
 
       duelTimeout = setTimeout(() => {
         duelTimeout = null;
+        gameState.revealDuelMatchup(index);
         const nextIndex = index + 1;
         if (nextIndex < matchups.length) {
           playDuel(nextIndex);
@@ -160,6 +162,7 @@ const scheduleRoundLifecycle = () => {
   if (duelDelay > 0) {
     startDuelSequence();
   } else {
+    gameState.revealAllMatchups();
     scheduleProcessingPhase();
   }
 };
@@ -266,14 +269,17 @@ app.post('/api/bots', (req, res, next) => {
       strategy
     });
 
-    const strategyLabel =
+    const requestedStrategy =
       typeof strategy === 'string' && strategy.trim().length > 0
         ? strategy.trim().toLowerCase()
         : 'random';
 
+    const strategyMessage =
+      requestedStrategy === 'random' ? 'randomized strategies' : `${requestedStrategy} strategy`;
+
     res.status(201).json({
       bots,
-      message: `${bots.length} bot${bots.length === 1 ? '' : 's'} added to the lobby using ${strategyLabel} strategy.`,
+      message: `${bots.length} bot${bots.length === 1 ? '' : 's'} added to the lobby using ${strategyMessage}.`,
       state: buildStatePayload()
     });
   } catch (error) {

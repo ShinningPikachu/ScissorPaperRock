@@ -31,7 +31,7 @@ const COMPETITION_STAGE_DURATION_MS = 5_000;
 const DUEL_STAGE_DURATION_MS = 5_000;
 
 const MAX_STAGE = 0;
-const MIN_STAGE = -9;
+const MIN_STAGE = -50;
 
 const STAGE_COUNT = Math.abs(MIN_STAGE - MAX_STAGE) + 1;
 

@@ -48,7 +48,58 @@
     return `<span class="round-meta">${label}: ${list}</span>`;
   }
 
-  function summarizeStrategiesByLayer(players) {
+  function extractDuelHighlights(round) {
+    const winners = new Set();
+    const losers = new Map();
+
+    if (!round || typeof round !== 'object') {
+      return { winners, losers };
+    }
+
+    const matchups = Array.isArray(round.matchups) ? round.matchups : [];
+    matchups.forEach((matchup) => {
+      if (!matchup || typeof matchup !== 'object') {
+        return;
+      }
+      const outcome = matchup.result;
+      if (!outcome || outcome === 'pending') {
+        return;
+      }
+      const winnerId =
+        typeof matchup.winnerId === 'string' && matchup.winnerId.length > 0
+          ? matchup.winnerId
+          : outcome === 'a'
+          ? matchup.aId
+          : outcome === 'b'
+          ? matchup.bId
+          : outcome === 'bye'
+          ? matchup.aId
+          : null;
+      if (winnerId) {
+        winners.add(winnerId);
+      }
+
+      const loserId =
+        typeof matchup.loserId === 'string' && matchup.loserId.length > 0
+          ? matchup.loserId
+          : outcome === 'a'
+          ? matchup.bId
+          : outcome === 'b'
+          ? matchup.aId
+          : null;
+      if (loserId) {
+        const nextLayer =
+          typeof matchup.loserNextLayer === 'number' && Number.isFinite(matchup.loserNextLayer)
+            ? matchup.loserNextLayer
+            : -1;
+        losers.set(loserId, nextLayer);
+      }
+    });
+
+    return { winners, losers };
+  }
+
+  function summarizeStrategiesByLayer(players, { duelHighlights } = {}) {
     const summary = new Map();
     const defaultMoves = ['rock', 'paper', 'scissors'];
     const totals = {
@@ -59,15 +110,25 @@
       total: 0
     };
 
+    const loserMap =
+      duelHighlights && duelHighlights.losers instanceof Map ? duelHighlights.losers : null;
+
     (Array.isArray(players) ? players : []).forEach((player) => {
-      if (!player || player.role !== 'player' || player.active === false) {
+      if (
+        !player ||
+        player.role !== 'player' ||
+        player.active === false ||
+        player.status === 'eliminated'
+      ) {
         return;
       }
 
-      const layer =
+      const originalLayer =
         typeof player.layer === 'number' && Number.isFinite(player.layer)
           ? player.layer
           : 0;
+      const layer =
+        loserMap && loserMap.has(player.id) ? loserMap.get(player.id) : originalLayer;
 
       if (!summary.has(layer)) {
         summary.set(layer, {
@@ -101,18 +162,35 @@
     return { layers, totals };
   }
 
-  function groupPlayersByStage(players) {
+  function groupPlayersByStage(players, { duelHighlights, roundPhase, visibleStage } = {}) {
     const map = new Map();
+    const winnerSet =
+      duelHighlights && duelHighlights.winners instanceof Set ? duelHighlights.winners : null;
+    const loserMap =
+      duelHighlights && duelHighlights.losers instanceof Map ? duelHighlights.losers : null;
 
     (Array.isArray(players) ? players : []).forEach((player) => {
-      if (!player || player.role !== 'player') {
+      if (
+        !player ||
+        player.role !== 'player' ||
+        player.status === 'eliminated'
+      ) {
         return;
       }
 
-      const layer =
+      const originalLayer =
         typeof player.layer === 'number' && Number.isFinite(player.layer)
           ? player.layer
           : 0;
+      const layer = loserMap && loserMap.has(player.id) ? loserMap.get(player.id) : originalLayer;
+
+      if (
+        roundPhase === 'duel' &&
+        Number.isFinite(visibleStage) &&
+        layer !== visibleStage
+      ) {
+        return;
+      }
 
       if (!map.has(layer)) {
         map.set(layer, []);
@@ -121,7 +199,9 @@
         id: player.id,
         name: player.name,
         active: player.active !== false,
-        status: player.status
+        status: player.status,
+        isWinner: winnerSet ? winnerSet.has(player.id) : false,
+        isLoser: loserMap ? loserMap.has(player.id) : false
       });
     });
 
@@ -138,6 +218,7 @@
     showFeedback,
     capitalize,
     formatRoundMeta,
+    extractDuelHighlights,
     summarizeStrategiesByLayer,
     groupPlayersByStage
   };

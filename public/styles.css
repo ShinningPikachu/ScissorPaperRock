@@ -327,6 +327,16 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+.stage-occupancy-table .player-pill.winner {
+  background: rgba(74, 222, 128, 0.25);
+  color: var(--success);
+}
+
+.stage-occupancy-table .player-pill.loser {
+  background: rgba(248, 113, 113, 0.18);
+  color: var(--danger);
+}
+
 .stage-occupancy-table .player-pill.inactive {
   background: rgba(248, 113, 113, 0.2);
   color: var(--danger);
@@ -435,6 +445,60 @@ button:disabled {
   color: var(--muted);
   font-style: italic;
   min-height: 1.25rem;
+  transition: all 0.3s ease;
+}
+
+.next-round.countdown-active {
+  color: var(--accent);
+  font-style: normal;
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 16px rgba(59, 201, 219, 0.45);
+}
+
+.elimination-banner {
+  margin: 0.5rem 0 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.25), rgba(248, 113, 113, 0.1));
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #fee2e2;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+}
+
+.elimination-banner strong {
+  color: var(--white);
+}
+
+.elimination-heading {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.elimination-names {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--white);
+}
+
+.elimination-hint {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #fee2e2;
+  opacity: 0.85;
+}
+
+.round-meta.elimination-meta {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 .state-header {
@@ -481,6 +545,21 @@ td {
 
 tbody tr:hover {
   background: rgba(59, 201, 219, 0.08);
+}
+
+.players-table tbody tr.player-row-winner,
+tbody tr.player-row-winner {
+  background: rgba(74, 222, 128, 0.2);
+}
+
+.players-table tbody tr.player-row-loser,
+tbody tr.player-row-loser {
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.players-table tbody tr.player-row,
+tbody tr.player-row {
+  transition: background 0.2s ease;
 }
 
 .status-pill {

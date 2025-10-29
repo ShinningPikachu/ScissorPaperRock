@@ -3,6 +3,7 @@ const Player = require('./player');
 const {
   MOVES,
   BEATS,
+  PLAYER_STATUS,
   ROLES,
   ROUND_INTERVAL_MS,
   PROCESS_STAGE_DURATION_MS,
@@ -237,6 +238,9 @@ class GameState {
       this.advanceDuelMatchup(0);
     } else {
       this.round.currentMatchupIndex = matchups.length > 0 ? 0 : null;
+      if (matchups.length > 0) {
+        this.revealAllMatchups();
+      }
       if (this.processStageMs > 0) {
         this.round.phase = 'processing';
         this.round.phaseEndsAt = new Date(Date.now() + this.processStageMs).toISOString();
@@ -297,15 +301,11 @@ class GameState {
       }
 
       const strategy = player.botStrategy || 'random';
-      let nextMove;
+      const nextMove = this.getMoveForStrategy(strategy, moveOptions);
 
-      if (strategy === 'random') {
-        nextMove = moveOptions[Math.floor(Math.random() * moveOptions.length)];
-      } else {
-        nextMove = strategy;
+      if (nextMove) {
+        player.setMove(nextMove);
       }
-
-      player.setMove(nextMove);
     }
   }
 
@@ -334,6 +334,31 @@ class GameState {
     }
 
     return candidate;
+  }
+
+  getMoveForStrategy(strategy, moveOptions = Object.values(MOVES)) {
+    const options = Array.isArray(moveOptions) ? moveOptions.filter(Boolean) : [];
+    if (options.length === 0) {
+      return null;
+    }
+    const value = typeof strategy === 'string' ? strategy.toLowerCase() : 'random';
+    if (value === 'random') {
+      return options[Math.floor(Math.random() * options.length)];
+    }
+    if (options.includes(value)) {
+      return value;
+    }
+    return options[Math.floor(Math.random() * options.length)];
+  }
+
+  applyInitialBotStrategy(player) {
+    if (!player || player.role !== ROLES.PLAYER || !player.isBot) {
+      return;
+    }
+    const initialMove = this.getMoveForStrategy(player.botStrategy);
+    if (initialMove) {
+      player.setMove(initialMove);
+    }
   }
 
   normalizeBotStrategy(strategy) {
@@ -378,6 +403,77 @@ class GameState {
     return this.duelStageMs;
   }
 
+  setMatchupResolution(matchup, resolution) {
+    if (!matchup || typeof matchup !== 'object') {
+      return;
+    }
+    if (
+      !resolution ||
+      typeof resolution !== 'object' ||
+      !Object.keys(resolution).length
+    ) {
+      if (Object.prototype.hasOwnProperty.call(matchup, '_resolution')) {
+        delete matchup._resolution;
+      }
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(matchup, '_resolution')) {
+      matchup._resolution = resolution;
+      return;
+    }
+    Object.defineProperty(matchup, '_resolution', {
+      value: resolution,
+      enumerable: false,
+      configurable: true,
+      writable: true
+    });
+  }
+
+  revealDuelMatchup(index) {
+    const matchups = Array.isArray(this.round.matchups) ? this.round.matchups : [];
+    if (matchups.length === 0) {
+      return null;
+    }
+
+    const boundedIndex = Math.max(0, Math.min(index, matchups.length - 1));
+    const matchup = matchups[boundedIndex];
+
+    if (!matchup || matchup.revealed) {
+      return matchup || null;
+    }
+
+    const resolution = matchup._resolution;
+    if (resolution && typeof resolution === 'object') {
+      matchup.result = resolution.result || 'pending';
+      matchup.winnerId =
+        typeof resolution.winnerId === 'string' ? resolution.winnerId : null;
+      matchup.loserId = typeof resolution.loserId === 'string' ? resolution.loserId : null;
+      matchup.winnerMove =
+        typeof resolution.winnerMove === 'string' ? resolution.winnerMove : null;
+      matchup.loserMove =
+        typeof resolution.loserMove === 'string' ? resolution.loserMove : null;
+      matchup.loserNextLayer =
+        typeof resolution.loserNextLayer === 'number' && Number.isFinite(resolution.loserNextLayer)
+          ? resolution.loserNextLayer
+          : null;
+    }
+
+    matchup.revealed = true;
+    if (Object.prototype.hasOwnProperty.call(matchup, '_resolution')) {
+      delete matchup._resolution;
+    }
+
+    return matchup;
+  }
+
+  revealAllMatchups() {
+    const matchups = Array.isArray(this.round.matchups) ? this.round.matchups : [];
+    matchups.forEach((_, idx) => {
+      this.revealDuelMatchup(idx);
+    });
+    return matchups;
+  }
+
   addBots({ count, names, strategy } = {}) {
     if (this.round.started || this.pendingOutcome) {
       throw new Error('Bots can only be added while waiting for the next round.');
@@ -411,33 +507,37 @@ class GameState {
     if (providedNames.length > 0) {
       providedNames.forEach((name) => {
         const uniqueName = this.ensureUniqueBotName(name);
-        const bot = this.registerPlayer({
+        const registration = this.registerPlayer({
           name: uniqueName,
           role: ROLES.PLAYER,
           isBot: true,
           botStrategy: normalizedStrategy
         });
-        created.push(bot);
+        const botPlayer = this.getPlayer(registration.id);
+        this.applyInitialBotStrategy(botPlayer);
+        created.push(botPlayer.serialize());
       });
       return created;
     }
 
     for (let index = 0; index < requested; index += 1) {
       const name = this.generateBotName();
-      const bot = this.registerPlayer({
+      const registration = this.registerPlayer({
         name,
         role: ROLES.PLAYER,
         isBot: true,
         botStrategy: normalizedStrategy
       });
-      created.push(bot);
+      const botPlayer = this.getPlayer(registration.id);
+      this.applyInitialBotStrategy(botPlayer);
+      created.push(botPlayer.serialize());
     }
 
     return created;
   }
 
   resolveRound(participants) {
-    const stageMap = new Map();
+    const stageBuckets = new Map();
 
     participants.forEach((player) => {
       const stage =
@@ -445,18 +545,22 @@ class GameState {
           ? player.layer
           : 0;
 
-      if (!stageMap.has(stage)) {
-        stageMap.set(stage, []);
+      if (!stageBuckets.has(stage)) {
+        stageBuckets.set(stage, []);
       }
 
-      stageMap.get(stage).push(player);
+      stageBuckets.get(stage).push(player);
     });
 
-    const orderedStages = Array.from(stageMap.keys()).sort((a, b) => b - a);
+    const initialStages = Array.from(stageBuckets.keys()).sort((a, b) => b - a);
+    const pendingStages = [...initialStages];
+    const enqueuedStages = new Set(pendingStages);
     const stageMessages = [];
     const winningMoves = new Set();
-    const eliminatedPlayerIds = new Set();
     const winnerPlayerIds = new Set();
+    const eliminatedPlayerIds = new Set();
+    const eliminationEvents = [];
+    const demotionCounts = new Map();
     const matchups = [];
 
     const compareMoves = (playerA, playerB) => {
@@ -474,43 +578,68 @@ class GameState {
       return { result: 'b', winner: playerB, loser: playerA };
     };
 
-    orderedStages.forEach((stage) => {
-      const players = [...stageMap.get(stage)];
-      if (players.length === 0) {
-        return;
+    while (pendingStages.length > 0) {
+      pendingStages.sort((a, b) => b - a);
+      const stage = pendingStages.shift();
+      enqueuedStages.delete(stage);
+
+      const playersAtStage = stageBuckets.get(stage) || [];
+      if (playersAtStage.length === 0) {
+        continue;
       }
 
-      for (let index = players.length - 1; index > 0; index -= 1) {
+      for (let index = playersAtStage.length - 1; index > 0; index -= 1) {
         const swapIndex = Math.floor(Math.random() * (index + 1));
-        [players[index], players[swapIndex]] = [players[swapIndex], players[index]];
+        [playersAtStage[index], playersAtStage[swapIndex]] = [
+          playersAtStage[swapIndex],
+          playersAtStage[index]
+        ];
       }
 
       const stageLabel = `Stage ${stage}`;
+      const stageLosers = [];
+      let duelNumber = 0;
 
-      for (let idx = 0; idx < players.length; idx += 2) {
-        const fighterA = players[idx];
-        const fighterB = players[idx + 1] || null;
+      for (let idx = 0; idx < playersAtStage.length; idx += 2) {
+        const fighterA = playersAtStage[idx];
+        const fighterB = playersAtStage[idx + 1] || null;
+        duelNumber += 1;
         const matchup = {
-          id: `duel-${this.round.number}-${stage}-${Math.floor(idx / 2) + 1}`,
+          id: `duel-${this.round.number}-${stage}-${duelNumber}`,
           stage,
           aId: fighterA.id,
           aName: fighterA.name,
           bId: fighterB ? fighterB.id : null,
           bName: fighterB ? fighterB.name : null,
-          result: 'pending'
+          result: 'pending',
+          winnerId: null,
+          loserId: null,
+          winnerMove: null,
+          loserMove: null,
+          loserNextLayer: null,
+          revealed: false
         };
 
         if (!fighterB) {
           matchup.result = 'bye';
+          matchup.winnerId = fighterA.id;
+          matchup.winnerMove = fighterA.move || null;
+          matchup.revealed = true;
           matchups.push(matchup);
           stageMessages.push(`${stageLabel}: ${fighterA.name} advances with a bye.`);
           continue;
         }
 
-        const outcome = compareMoves(fighterA, fighterB);
-
-        if (outcome.result === 'tie') {
-          matchup.result = 'tie';
+        const duelOutcome = compareMoves(fighterA, fighterB);
+        if (duelOutcome.result === 'tie') {
+          this.setMatchupResolution(matchup, {
+            result: 'tie',
+            winnerId: null,
+            loserId: null,
+            winnerMove: fighterA.move || null,
+            loserMove: fighterB.move || null,
+            loserNextLayer: null
+          });
           matchups.push(matchup);
           stageMessages.push(
             `${stageLabel}: ${fighterA.name} and ${fighterB.name} tied with ${fighterA.move}.`
@@ -518,19 +647,63 @@ class GameState {
           continue;
         }
 
-        const winner = outcome.winner;
-        const loser = outcome.loser;
+        const winner = duelOutcome.winner;
+        const loser = duelOutcome.loser;
         winningMoves.add(winner.move);
         winnerPlayerIds.add(winner.id);
-        eliminatedPlayerIds.add(loser.id);
-        matchup.result = winner.id === fighterA.id ? 'a' : 'b';
+        const loserCurrentLayer =
+          typeof loser.layer === 'number' && Number.isFinite(loser.layer) ? loser.layer : stage;
+        const loserNextLayer = Math.max(loserCurrentLayer - 1, MIN_STAGE);
+        this.setMatchupResolution(matchup, {
+          result: winner.id === fighterA.id ? 'a' : 'b',
+          winnerId: winner.id,
+          loserId: loser.id,
+          winnerMove: winner.move || null,
+          loserMove: loser.move || null,
+          loserNextLayer
+        });
         matchups.push(matchup);
 
+        stageLosers.push(loser);
+        const previousCount = demotionCounts.get(loser.id) || 0;
+        demotionCounts.set(loser.id, previousCount + 1);
+
+        const nextStage = stage - 1;
         stageMessages.push(
-          `${stageLabel}: ${winner.name}'s ${winner.move} beats ${loser.name}'s ${loser.move}.`
+          `${stageLabel}: ${winner.name}'s ${winner.move} beats ${loser.name}'s ${loser.move}. ${loser.name} drops to stage ${nextStage}.`
         );
       }
-    });
+
+      if (stageLosers.length === 0) {
+        continue;
+      }
+
+      const nextStage = stage - 1;
+      if (stageLosers.length === 1) {
+        const doomed = stageLosers[0];
+        eliminatedPlayerIds.add(doomed.id);
+        eliminationEvents.push({
+          playerId: doomed.id,
+          playerName: doomed.name,
+          eliminatedAt: nextStage,
+          round: this.round.number
+        });
+        stageMessages.push(
+          `Stage ${nextStage}: ${doomed.name} is the final player in the loser bracket and is eliminated from the arena.`
+        );
+        continue;
+      }
+
+      if (!stageBuckets.has(nextStage)) {
+        stageBuckets.set(nextStage, []);
+      }
+      stageBuckets.get(nextStage).push(...stageLosers);
+
+      if (!enqueuedStages.has(nextStage)) {
+        pendingStages.push(nextStage);
+        enqueuedStages.add(nextStage);
+      }
+    }
 
     const status =
       winnerPlayerIds.size === 0 && eliminatedPlayerIds.size === 0 ? 'tie' : 'completed';
@@ -541,13 +714,26 @@ class GameState {
         ? 'Every duel ended in a stalemate. Positions remain unchanged.'
         : 'Duels resolved with updated standings.');
 
+    const demotedPlayerSteps = Array.from(demotionCounts.entries()).map(
+      ([playerId, count]) => ({
+        playerId,
+        count
+      })
+    );
+    const demotedPlayerIds = Array.from(demotionCounts.keys()).filter(
+      (playerId) => !eliminatedPlayerIds.has(playerId)
+    );
+
     return {
       outcome: {
         status,
         message,
         winningMoves: Array.from(winningMoves),
         eliminatedPlayerIds: Array.from(eliminatedPlayerIds),
-        winnerPlayerIds: Array.from(winnerPlayerIds)
+        winnerPlayerIds: Array.from(winnerPlayerIds),
+        demotedPlayerSteps,
+        demotedPlayerIds,
+        eliminationEvents
       },
       matchups
     };
@@ -565,6 +751,22 @@ class GameState {
       return;
     }
 
+    const eliminatedIdsSet = new Set(outcome.eliminatedPlayerIds || []);
+
+    const demotions = Array.isArray(outcome.demotedPlayerSteps)
+      ? outcome.demotedPlayerSteps
+      : [];
+
+    demotions.forEach(({ playerId, count }) => {
+      const player = this.players.get(playerId);
+      if (!player || !Number.isFinite(count) || count <= 0) {
+        return;
+      }
+      for (let index = 0; index < count; index += 1) {
+        player.demote();
+      }
+    });
+
     const processed = new Set();
 
     (outcome.winnerPlayerIds || []).forEach((id) => {
@@ -575,10 +777,7 @@ class GameState {
       }
     });
 
-    (outcome.eliminatedPlayerIds || []).forEach((id) => {
-      if (processed.has(id)) {
-        return;
-      }
+    eliminatedIdsSet.forEach((id) => {
       const player = this.players.get(id);
       if (player) {
         player.eliminate();
@@ -596,6 +795,21 @@ class GameState {
         processed.add(id);
       }
     });
+
+    if (eliminatedIdsSet.size > 0) {
+      this.players.forEach((player) => {
+        if (player.role !== ROLES.PLAYER) {
+          return;
+        }
+        if (eliminatedIdsSet.has(player.id)) {
+          return;
+        }
+        if (player.status === PLAYER_STATUS.ELIMINATED) {
+          return;
+        }
+        player.resetToBaseLayer();
+      });
+    }
   }
 
   beginProcessingPhase() {
@@ -641,6 +855,7 @@ class GameState {
     const nowIso = new Date().toISOString();
     const effectiveStartedAt = roundExecuted ? startedAt || nowIso : null;
 
+    this.revealAllMatchups();
     this.applyOutcomeToPlayers(outcome);
 
     const fullOutcome = {
@@ -669,6 +884,12 @@ class GameState {
       outcome: fullOutcome,
       matchups: fullOutcome.matchups
     });
+
+    if (this.roundIntervalMs > 0) {
+      this.scheduleNextRound(this.roundIntervalMs);
+    } else {
+      this.setNextRoundAt(null);
+    }
 
     const nextNumber = this.round.number + 1;
     this.round = this.createRoundState(nextNumber);
