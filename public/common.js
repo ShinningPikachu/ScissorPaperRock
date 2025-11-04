@@ -65,19 +65,32 @@
       if (!outcome || outcome === 'pending') {
         return;
       }
-      const winnerId =
-        typeof matchup.winnerId === 'string' && matchup.winnerId.length > 0
-          ? matchup.winnerId
-          : outcome === 'a'
-          ? matchup.aId
-          : outcome === 'b'
-          ? matchup.bId
-          : outcome === 'bye'
-          ? matchup.aId
-          : null;
-      if (winnerId) {
-        winners.add(winnerId);
+
+      let winningIds = [];
+      if (Array.isArray(matchup.winnerIds) && matchup.winnerIds.length > 0) {
+        winningIds = matchup.winnerIds.filter(
+          (id) => typeof id === 'string' && id.length > 0
+        );
+      } else {
+        const fallbackWinner =
+          typeof matchup.winnerId === 'string' && matchup.winnerId.length > 0
+            ? matchup.winnerId
+            : outcome === 'a'
+            ? matchup.aId
+            : outcome === 'b'
+            ? matchup.bId
+            : outcome === 'bye'
+            ? matchup.aId
+            : null;
+        if (fallbackWinner) {
+          winningIds = [fallbackWinner];
+        }
       }
+      winningIds.forEach((id) => {
+        if (id) {
+          winners.add(id);
+        }
+      });
 
       const loserId =
         typeof matchup.loserId === 'string' && matchup.loserId.length > 0
@@ -99,19 +112,14 @@
     return { winners, losers };
   }
 
-  function summarizeStrategiesByLayer(players, { duelHighlights } = {}) {
-    const summary = new Map();
+  function summarizeStrategiesByLayer(players) {
     const defaultMoves = ['rock', 'paper', 'scissors'];
     const totals = {
       rock: 0,
       paper: 0,
       scissors: 0,
-      undecided: 0,
       total: 0
     };
-
-    const loserMap =
-      duelHighlights && duelHighlights.losers instanceof Map ? duelHighlights.losers : null;
 
     (Array.isArray(players) ? players : []).forEach((player) => {
       if (
@@ -123,94 +131,258 @@
         return;
       }
 
-      const originalLayer =
+      const move = typeof player.move === 'string' ? player.move.toLowerCase() : '';
+      if (!defaultMoves.includes(move)) {
+        return;
+      }
+
+      totals[move] += 1;
+    });
+
+    totals.total = totals.rock + totals.paper + totals.scissors;
+
+    return { layers: [], totals };
+  }
+
+  function groupPlayersByStage(players, { duelHighlights, matchups } = {}) {
+    const safePlayers = Array.isArray(players) ? players : [];
+    const playerIndex = new Map();
+
+    safePlayers.forEach((player) => {
+      if (!player || player.role !== 'player') {
+        return;
+      }
+      playerIndex.set(player.id, player);
+    });
+
+    const layerPlayers = new Map();
+
+    const ensureLayer = (layer) => {
+      const numericLayer = Number.isFinite(layer) ? layer : 0;
+      if (!layerPlayers.has(numericLayer)) {
+        layerPlayers.set(numericLayer, new Map());
+      }
+      return layerPlayers.get(numericLayer);
+    };
+
+    const createEntry = (player, fallbackName) => ({
+      id: player?.id || null,
+      name: player?.name || fallbackName || 'Unknown',
+      active: player ? player.active !== false : true,
+      status: player ? player.status : 'waiting',
+      isWinner: false,
+      isLoser: false
+    });
+
+    const getOrCreateEntry = (layer, playerId, fallbackName) => {
+      if (!playerId) {
+        return null;
+      }
+      const roster = ensureLayer(layer);
+      let entry = roster.get(playerId);
+      if (!entry) {
+        const base = playerIndex.get(playerId) || null;
+        entry = createEntry(base, fallbackName);
+        roster.set(playerId, entry);
+      } else if (fallbackName && entry.name === 'Unknown') {
+        entry.name = fallbackName;
+      }
+      return entry;
+    };
+
+    const removeFromAllLayers = (playerId) => {
+      layerPlayers.forEach((roster) => {
+        roster.delete(playerId);
+      });
+    };
+
+    safePlayers.forEach((player) => {
+      if (!player || player.role !== 'player' || player.status === 'eliminated') {
+        return;
+      }
+
+      const baseLayer =
         typeof player.layer === 'number' && Number.isFinite(player.layer)
           ? player.layer
           : 0;
-      const layer =
-        loserMap && loserMap.has(player.id) ? loserMap.get(player.id) : originalLayer;
 
-      if (!summary.has(layer)) {
-        summary.set(layer, {
-          rock: 0,
-          paper: 0,
-          scissors: 0,
-          undecided: 0,
-          total: 0
-        });
+      const entry = getOrCreateEntry(baseLayer, player.id, player.name);
+      if (entry) {
+        entry.active = player.active !== false;
+        entry.status = player.status;
       }
-
-      const bucket = summary.get(layer);
-      const move = typeof player.move === 'string' ? player.move.toLowerCase() : '';
-
-      if (defaultMoves.includes(move)) {
-        bucket[move] += 1;
-        totals[move] += 1;
-      } else {
-        bucket.undecided += 1;
-        totals.undecided += 1;
-      }
-
-      bucket.total += 1;
-      totals.total += 1;
     });
 
-    const layers = Array.from(summary.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([layer, counts]) => ({ layer, counts }));
+    const matchupMap = new Map();
+    (Array.isArray(matchups) ? matchups : []).forEach((matchup) => {
+      if (!matchup || typeof matchup !== 'object') {
+        return;
+      }
+      const stageValue =
+        typeof matchup.stage === 'number' && Number.isFinite(matchup.stage)
+          ? matchup.stage
+          : 0;
+      if (!matchupMap.has(stageValue)) {
+        matchupMap.set(stageValue, []);
+      }
+      const entries = matchupMap.get(stageValue);
+      const fallbackAName =
+        typeof matchup.aName === 'string' && matchup.aName.length > 0
+          ? matchup.aName
+          : matchup.aId
+          ? 'Player A'
+          : 'Awaiting opponent';
+      const fallbackBName =
+        typeof matchup.bName === 'string' && matchup.bName.length > 0
+          ? matchup.bName
+          : matchup.bId
+          ? 'Player B'
+          : 'Awaiting opponent';
+      const snapshot = {
+        id:
+          typeof matchup.id === 'string'
+            ? matchup.id
+            : `duel-${stageValue}-${entries.length + 1}`,
+        stage: stageValue,
+        aId: typeof matchup.aId === 'string' ? matchup.aId : null,
+        aName: fallbackAName,
+        bId: typeof matchup.bId === 'string' ? matchup.bId : null,
+        bName: fallbackBName,
+        result: typeof matchup.result === 'string' ? matchup.result : 'pending',
+        winnerId: typeof matchup.winnerId === 'string' ? matchup.winnerId : null,
+        loserId: typeof matchup.loserId === 'string' ? matchup.loserId : null,
+        loserNextLayer:
+          typeof matchup.loserNextLayer === 'number' && Number.isFinite(matchup.loserNextLayer)
+            ? matchup.loserNextLayer
+            : null,
+        revealed: Boolean(matchup.revealed)
+      };
+      entries.push(snapshot);
 
-    return { layers, totals };
-  }
+      const existingRoster = layerPlayers.get(stageValue);
+      const canExposeParticipant = (playerId) => {
+        if (!playerId) {
+          return false;
+        }
+        if (stageValue >= 0) {
+          return true;
+        }
+        if (snapshot.revealed) {
+          return true;
+        }
+        return Boolean(existingRoster && existingRoster.has(playerId));
+      };
 
-  function groupPlayersByStage(players, { duelHighlights, roundPhase, visibleStage } = {}) {
-    const map = new Map();
+      const fighterA = canExposeParticipant(snapshot.aId)
+        ? getOrCreateEntry(stageValue, snapshot.aId, snapshot.aName)
+        : null;
+      const fighterB = canExposeParticipant(snapshot.bId)
+        ? getOrCreateEntry(stageValue, snapshot.bId, snapshot.bName)
+        : null;
+
+      if (!snapshot.revealed) {
+        return;
+      }
+
+      if (snapshot.result === 'a') {
+        if (fighterA) {
+          fighterA.isWinner = true;
+        }
+        if (snapshot.bId) {
+          removeFromAllLayers(snapshot.bId);
+          const targetLayer =
+            typeof snapshot.loserNextLayer === 'number' && Number.isFinite(snapshot.loserNextLayer)
+              ? snapshot.loserNextLayer
+              : stageValue - 1;
+          const demoted = getOrCreateEntry(targetLayer, snapshot.bId, snapshot.bName);
+          if (demoted) {
+            demoted.isLoser = true;
+            const base = playerIndex.get(snapshot.bId);
+            if (base) {
+              demoted.active = base.active !== false;
+              demoted.status = base.status;
+            }
+          }
+        }
+      } else if (snapshot.result === 'b') {
+        if (fighterB) {
+          fighterB.isWinner = true;
+        }
+        if (snapshot.aId) {
+          removeFromAllLayers(snapshot.aId);
+          const targetLayer =
+            typeof snapshot.loserNextLayer === 'number' && Number.isFinite(snapshot.loserNextLayer)
+              ? snapshot.loserNextLayer
+              : stageValue - 1;
+          const demoted = getOrCreateEntry(targetLayer, snapshot.aId, snapshot.aName);
+          if (demoted) {
+            demoted.isLoser = true;
+            const base = playerIndex.get(snapshot.aId);
+            if (base) {
+              demoted.active = base.active !== false;
+              demoted.status = base.status;
+            }
+          }
+        }
+      } else if (snapshot.result === 'tie') {
+        if (fighterA) {
+          fighterA.isLoser = false;
+        }
+        if (fighterB) {
+          fighterB.isLoser = false;
+        }
+      } else if (snapshot.result === 'bye') {
+        if (fighterA) {
+          fighterA.isWinner = true;
+        }
+      }
+    });
+
     const winnerSet =
       duelHighlights && duelHighlights.winners instanceof Set ? duelHighlights.winners : null;
     const loserMap =
       duelHighlights && duelHighlights.losers instanceof Map ? duelHighlights.losers : null;
 
-    (Array.isArray(players) ? players : []).forEach((player) => {
-      if (
-        !player ||
-        player.role !== 'player' ||
-        player.status === 'eliminated'
-      ) {
-        return;
-      }
-
-      const originalLayer =
-        typeof player.layer === 'number' && Number.isFinite(player.layer)
-          ? player.layer
-          : 0;
-      const layer = loserMap && loserMap.has(player.id) ? loserMap.get(player.id) : originalLayer;
-
-      if (
-        roundPhase === 'duel' &&
-        Number.isFinite(visibleStage) &&
-        layer !== visibleStage
-      ) {
-        return;
-      }
-
-      if (!map.has(layer)) {
-        map.set(layer, []);
-      }
-      map.get(layer).push({
-        id: player.id,
-        name: player.name,
-        active: player.active !== false,
-        status: player.status,
-        isWinner: winnerSet ? winnerSet.has(player.id) : false,
-        isLoser: loserMap ? loserMap.has(player.id) : false
+    if (winnerSet || loserMap) {
+      layerPlayers.forEach((roster, layer) => {
+        roster.forEach((entry, playerId) => {
+          if (winnerSet && winnerSet.has(playerId)) {
+            entry.isWinner = true;
+          }
+          if (loserMap && loserMap.has(playerId)) {
+            entry.isLoser = true;
+            const desiredLayer = loserMap.get(playerId);
+            if (Number.isFinite(desiredLayer) && desiredLayer !== layer) {
+              removeFromAllLayers(playerId);
+              const reassigned = getOrCreateEntry(desiredLayer, playerId, entry.name);
+              if (reassigned) {
+                reassigned.isLoser = true;
+                reassigned.active = entry.active;
+                reassigned.status = entry.status;
+              }
+            }
+          }
+        });
       });
-    });
+    }
 
-    return Array.from(map.entries())
-      .sort((a, b) => b[0] - a[0])
-      .map(([layer, members]) => ({
-        layer,
-        players: members.sort((a, b) => a.name.localeCompare(b.name))
-      }));
+    const layerKeys = new Set([...layerPlayers.keys(), ...matchupMap.keys()]);
+
+    return Array.from(layerKeys)
+      .sort((a, b) => Number(b) - Number(a))
+      .map((layer) => {
+        const roster = layerPlayers.get(layer);
+        const playersForLayer = roster
+          ? Array.from(roster.values()).sort((a, b) => a.name.localeCompare(b.name))
+          : [];
+        const layerMatchups = matchupMap.get(layer) || [];
+        return {
+          layer,
+          players: playersForLayer,
+          matchups: layerMatchups
+        };
+      })
+      .filter((entry) => entry.players.length > 0);
   }
 
   window.SPR = {

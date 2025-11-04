@@ -248,39 +248,25 @@ function renderStrategySummary() {
 
   const duelHighlights = getDuelHighlights();
   const summary = window.SPR.summarizeStrategiesByLayer(state.players, { duelHighlights });
-  const { layers, totals } = summary;
+  const { totals } = summary;
 
   elements.strategySummaryBody.innerHTML = '';
 
-  if (layers.length === 0) {
+  if (totals.total === 0) {
     const emptyRow = document.createElement('tr');
     const emptyCell = document.createElement('td');
-    emptyCell.colSpan = 6;
-    emptyCell.textContent = 'No registered players yet.';
+    emptyCell.colSpan = 4;
+    emptyCell.textContent = 'No strategies locked in yet.';
     emptyRow.appendChild(emptyCell);
     elements.strategySummaryBody.appendChild(emptyRow);
   } else {
-    layers.forEach(({ layer, counts }) => {
-      const row = document.createElement('tr');
-      row.appendChild(createCell(layer));
-      row.appendChild(createCell(counts.rock));
-      row.appendChild(createCell(counts.paper));
-      row.appendChild(createCell(counts.scissors));
-      row.appendChild(createCell(counts.undecided));
-      row.appendChild(createCell(counts.total));
-      elements.strategySummaryBody.appendChild(row);
-    });
+    const totalsRow = document.createElement('tr');
+    totalsRow.appendChild(createCell(totals.rock));
+    totalsRow.appendChild(createCell(totals.paper));
+    totalsRow.appendChild(createCell(totals.scissors));
+    totalsRow.appendChild(createCell(totals.total));
+    elements.strategySummaryBody.appendChild(totalsRow);
   }
-
-  const totalsRow = document.createElement('tr');
-  totalsRow.className = 'summary-row';
-  totalsRow.appendChild(createCell('Total'));
-  totalsRow.appendChild(createCell(totals.rock));
-  totalsRow.appendChild(createCell(totals.paper));
-  totalsRow.appendChild(createCell(totals.scissors));
-  totalsRow.appendChild(createCell(totals.undecided));
-  totalsRow.appendChild(createCell(totals.total));
-  elements.strategySummaryBody.appendChild(totalsRow);
 }
 
 function renderStageOccupancy() {
@@ -289,53 +275,43 @@ function renderStageOccupancy() {
   }
 
   const round = state.round || {};
-  const isDuelPhase = round && round.phase === 'duel';
-  let visibleStage = null;
-
-  if (isDuelPhase) {
-    const matchups = Array.isArray(round.matchups) ? round.matchups : [];
-    if (matchups.length > 0) {
-      const safeIndex =
-        typeof round.currentMatchupIndex === 'number' && round.currentMatchupIndex >= 0
-          ? Math.min(round.currentMatchupIndex, matchups.length - 1)
-          : 0;
-      const currentMatchup = matchups[safeIndex] || matchups[0];
-      if (
-        currentMatchup &&
-        typeof currentMatchup.stage === 'number' &&
-        Number.isFinite(currentMatchup.stage)
-      ) {
-        visibleStage = currentMatchup.stage;
-      }
-    }
-  }
-
+  const activeMatchups =
+    Array.isArray(round.matchups) && round.matchups.length > 0
+      ? round.matchups
+      : Array.isArray(state.lastOutcome?.matchups)
+      ? state.lastOutcome.matchups
+      : [];
   const duelHighlights = getDuelHighlights();
   const groups = window.SPR.groupPlayersByStage(state.players, {
     duelHighlights,
-    roundPhase: round.phase,
-    visibleStage
+    matchups: activeMatchups
   });
   elements.stageOccupancyBody.innerHTML = '';
 
   if (groups.length === 0) {
-    const row = document.createElement('tr');
-    const cell = document.createElement('td');
-    cell.colSpan = 2;
-    cell.textContent = 'No players on the board yet.';
-    row.appendChild(cell);
-    elements.stageOccupancyBody.appendChild(row);
+    const empty = document.createElement('p');
+    empty.className = 'layer-player-empty';
+    empty.textContent = 'No players on the board yet.';
+    elements.stageOccupancyBody.appendChild(empty);
     return;
   }
 
-  groups.forEach(({ layer, players }) => {
-    const row = document.createElement('tr');
+  groups.forEach(({ layer, players, matchups }) => {
+    const block = document.createElement('section');
+    block.className = 'layer-block';
 
-    row.appendChild(createCell(layer));
+    const header = document.createElement('h4');
+    header.className = 'layer-block-header';
+    header.textContent = `Layer ${layer}`;
+    block.appendChild(header);
 
-    const playersCell = document.createElement('td');
+    const playerList = document.createElement('div');
+    playerList.className = 'layer-player-list';
     if (players.length === 0) {
-      playersCell.textContent = '--';
+      const emptyPlayers = document.createElement('p');
+      emptyPlayers.className = 'layer-player-empty';
+      emptyPlayers.textContent = 'No players in this layer.';
+      playerList.appendChild(emptyPlayers);
     } else {
       players.forEach((player) => {
         const pill = document.createElement('span');
@@ -355,12 +331,135 @@ function renderStageOccupancy() {
           player.status && player.status !== 'ready' && player.status !== 'waiting'
             ? `${player.name} (${player.status})`
             : player.name;
-        playersCell.appendChild(pill);
+        playerList.appendChild(pill);
       });
     }
+    block.appendChild(playerList);
 
-    row.appendChild(playersCell);
-    elements.stageOccupancyBody.appendChild(row);
+    if (matchups.length === 0) {
+      const emptyDuels = document.createElement('p');
+      emptyDuels.className = 'layer-duel-empty';
+      emptyDuels.textContent = 'No duels scheduled for this layer.';
+      block.appendChild(emptyDuels);
+    } else {
+      const table = document.createElement('table');
+      table.className = 'layer-duel-table';
+
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      ['Player A', 'Player B', 'Result'].forEach((label) => {
+        const th = document.createElement('th');
+        th.textContent = label;
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const knownPlayerIds = new Set(players.map((player) => player.id));
+      const tbody = document.createElement('tbody');
+      matchups.forEach((matchup) => {
+        const row = document.createElement('tr');
+
+        const aCell = document.createElement('td');
+        const showAName =
+          layer >= 0 ||
+          matchup.revealed ||
+          (matchup.aId && knownPlayerIds.has(matchup.aId));
+        aCell.textContent = showAName ? matchup.aName || 'Player A' : 'Awaiting result';
+
+        const bCell = document.createElement('td');
+        let opponentLabel = 'Awaiting opponent';
+        if (matchup.bId) {
+          const showBName =
+            layer >= 0 ||
+            matchup.revealed ||
+            knownPlayerIds.has(matchup.bId);
+          opponentLabel = showBName ? matchup.bName || 'Player B' : 'Awaiting result';
+        }
+        bCell.textContent = opponentLabel;
+
+        const statusCell = document.createElement('td');
+        statusCell.className = 'duel-status';
+
+        const result = matchup.result || 'pending';
+        const winnersSet = new Set(
+          Array.isArray(matchup.winnerIds)
+            ? matchup.winnerIds.filter((id) => typeof id === 'string' && id.length > 0)
+            : []
+        );
+        if (winnersSet.size === 0) {
+          if (result === 'a') {
+            winnersSet.add(matchup.aId);
+          } else if (result === 'b' || result === 'bye') {
+            const fallbackWinner = matchup.bId != null ? matchup.bId : matchup.aId;
+            if (fallbackWinner) {
+              winnersSet.add(fallbackWinner);
+            }
+          }
+        }
+
+        const loserIds = [];
+        if (typeof matchup.loserId === 'string' && matchup.loserId.length > 0) {
+          loserIds.push(matchup.loserId);
+        } else if (result === 'a') {
+          loserIds.push(matchup.bId);
+        } else if (result === 'b') {
+          loserIds.push(matchup.aId);
+        }
+        const losersSet = new Set(
+          loserIds.filter((id) => typeof id === 'string' && id.length > 0)
+        );
+
+        if (matchup.aId && winnersSet.has(matchup.aId)) {
+          aCell.classList.add('duel-winner');
+        }
+        if (matchup.bId && winnersSet.has(matchup.bId)) {
+          bCell.classList.add('duel-winner');
+        }
+        if (matchup.aId && losersSet.has(matchup.aId)) {
+          aCell.classList.add('duel-loser');
+        }
+        if (matchup.bId && losersSet.has(matchup.bId)) {
+          bCell.classList.add('duel-loser');
+        }
+
+        if (result === 'a' || result === 'b') {
+          statusCell.classList.add('resolved');
+          statusCell.textContent =
+            typeof matchup.loserNextLayer === 'number'
+              ? `Loser to Layer ${matchup.loserNextLayer}`
+              : 'Resolved';
+        } else if (result === 'double-win') {
+          statusCell.classList.add('resolved');
+          statusCell.textContent = 'Both advance';
+        } else if (result === 'bye') {
+          if (!matchup.bId) {
+            bCell.textContent = 'No opponent';
+          }
+          aCell.classList.add('duel-winner');
+          statusCell.classList.add('bye', 'resolved');
+          statusCell.textContent = 'Bye';
+        } else if (result === 'tie') {
+          aCell.classList.add('duel-tie');
+          bCell.classList.add('duel-tie');
+          statusCell.classList.add('tie', 'resolved');
+          statusCell.textContent = 'Tie';
+        } else {
+          statusCell.classList.add('pending');
+          statusCell.textContent = 'Pending';
+        }
+
+        row.appendChild(aCell);
+        row.appendChild(bCell);
+        row.appendChild(statusCell);
+        tbody.appendChild(row);
+      });
+
+      table.appendChild(tbody);
+      block.appendChild(table);
+    }
+
+    elements.stageOccupancyBody.appendChild(block);
   });
 }
 

@@ -443,6 +443,7 @@ class GameState {
     }
 
     const resolution = matchup._resolution;
+    matchup.winnerIds = [];
     if (resolution && typeof resolution === 'object') {
       matchup.result = resolution.result || 'pending';
       matchup.winnerId =
@@ -456,6 +457,15 @@ class GameState {
         typeof resolution.loserNextLayer === 'number' && Number.isFinite(resolution.loserNextLayer)
           ? resolution.loserNextLayer
           : null;
+      const winnerIdsValue = Array.isArray(resolution.winnerIds)
+        ? resolution.winnerIds.filter((value) => typeof value === 'string' && value.length > 0)
+        : [];
+      if (winnerIdsValue.length > 0) {
+        matchup.winnerIds = winnerIdsValue;
+        if (!matchup.winnerId && winnerIdsValue.length === 1) {
+          [matchup.winnerId] = winnerIdsValue;
+        }
+      }
     }
 
     matchup.revealed = true;
@@ -538,18 +548,17 @@ class GameState {
 
   resolveRound(participants) {
     const stageBuckets = new Map();
+    const playerStages = new Map();
 
     participants.forEach((player) => {
-      const stage =
-        typeof player.layer === 'number' && Number.isFinite(player.layer)
-          ? player.layer
-          : 0;
+      const startingStage = 0;
+      playerStages.set(player.id, startingStage);
 
-      if (!stageBuckets.has(stage)) {
-        stageBuckets.set(stage, []);
+      if (!stageBuckets.has(startingStage)) {
+        stageBuckets.set(startingStage, []);
       }
 
-      stageBuckets.get(stage).push(player);
+      stageBuckets.get(startingStage).push(player);
     });
 
     const initialStages = Array.from(stageBuckets.keys()).sort((a, b) => b - a);
@@ -568,7 +577,14 @@ class GameState {
       const moveB = playerB.move;
 
       if (moveA === moveB) {
-        return { result: 'tie', winner: null, loser: null };
+        const roll = Math.random();
+        if (roll < 1 / 3) {
+          return { result: 'a', winner: playerA, loser: playerB };
+        }
+        if (roll < 2 / 3) {
+          return { result: 'b', winner: playerB, loser: playerA };
+        }
+        return { result: 'both', winners: [playerA, playerB] };
       }
 
       if (BEATS[moveA] === moveB) {
@@ -596,7 +612,7 @@ class GameState {
         ];
       }
 
-      const stageLabel = `Stage ${stage}`;
+      const stageLabel = `Layer ${stage}`;
       const stageLosers = [];
       let duelNumber = 0;
 
@@ -613,6 +629,7 @@ class GameState {
           bName: fighterB ? fighterB.name : null,
           result: 'pending',
           winnerId: null,
+          winnerIds: [],
           loserId: null,
           winnerMove: null,
           loserMove: null,
@@ -621,28 +638,46 @@ class GameState {
         };
 
         if (!fighterB) {
-          matchup.result = 'bye';
-          matchup.winnerId = fighterA.id;
-          matchup.winnerMove = fighterA.move || null;
-          matchup.revealed = true;
+          this.setMatchupResolution(matchup, {
+            result: 'bye',
+            winnerId: fighterA.id,
+            winnerIds: [fighterA.id],
+            loserId: null,
+            winnerMove: fighterA.move || null,
+            loserMove: null,
+            loserNextLayer: null
+          });
           matchups.push(matchup);
+          if (fighterA.move) {
+            winningMoves.add(fighterA.move);
+          }
+          winnerPlayerIds.add(fighterA.id);
           stageMessages.push(`${stageLabel}: ${fighterA.name} advances with a bye.`);
           continue;
         }
 
         const duelOutcome = compareMoves(fighterA, fighterB);
-        if (duelOutcome.result === 'tie') {
+        if (duelOutcome.result === 'both') {
+          const sharedMove = fighterA.move || fighterB.move || null;
+          const moveDescription = sharedMove
+            ? `both choosing ${sharedMove}`
+            : 'matching strategies';
           this.setMatchupResolution(matchup, {
-            result: 'tie',
-            winnerId: null,
+            result: 'double-win',
+            winnerIds: [fighterA.id, fighterB.id],
+            winnerMove: sharedMove,
+            loserMove: sharedMove,
             loserId: null,
-            winnerMove: fighterA.move || null,
-            loserMove: fighterB.move || null,
             loserNextLayer: null
           });
           matchups.push(matchup);
+          if (sharedMove) {
+            winningMoves.add(sharedMove);
+          }
+          winnerPlayerIds.add(fighterA.id);
+          winnerPlayerIds.add(fighterB.id);
           stageMessages.push(
-            `${stageLabel}: ${fighterA.name} and ${fighterB.name} tied with ${fighterA.move}.`
+            `${stageLabel}: ${fighterA.name} and ${fighterB.name} both advance despite ${moveDescription}.`
           );
           continue;
         }
@@ -651,12 +686,16 @@ class GameState {
         const loser = duelOutcome.loser;
         winningMoves.add(winner.move);
         winnerPlayerIds.add(winner.id);
-        const loserCurrentLayer =
-          typeof loser.layer === 'number' && Number.isFinite(loser.layer) ? loser.layer : stage;
+        const loserCurrentLayer = playerStages.has(loser.id)
+          ? playerStages.get(loser.id)
+          : stage;
+        const nextStage = stage - 1;
         const loserNextLayer = Math.max(loserCurrentLayer - 1, MIN_STAGE);
+        playerStages.set(loser.id, nextStage);
         this.setMatchupResolution(matchup, {
           result: winner.id === fighterA.id ? 'a' : 'b',
           winnerId: winner.id,
+          winnerIds: [winner.id],
           loserId: loser.id,
           winnerMove: winner.move || null,
           loserMove: loser.move || null,
@@ -668,9 +707,8 @@ class GameState {
         const previousCount = demotionCounts.get(loser.id) || 0;
         demotionCounts.set(loser.id, previousCount + 1);
 
-        const nextStage = stage - 1;
         stageMessages.push(
-          `${stageLabel}: ${winner.name}'s ${winner.move} beats ${loser.name}'s ${loser.move}. ${loser.name} drops to stage ${nextStage}.`
+          `${stageLabel}: ${winner.name}'s ${winner.move} beats ${loser.name}'s ${loser.move}. ${loser.name} drops to layer ${loserNextLayer}.`
         );
       }
 
@@ -682,14 +720,15 @@ class GameState {
       if (stageLosers.length === 1) {
         const doomed = stageLosers[0];
         eliminatedPlayerIds.add(doomed.id);
+        const eliminatedLayer = Math.max(nextStage, MIN_STAGE);
         eliminationEvents.push({
           playerId: doomed.id,
           playerName: doomed.name,
-          eliminatedAt: nextStage,
+          eliminatedAt: eliminatedLayer,
           round: this.round.number
         });
         stageMessages.push(
-          `Stage ${nextStage}: ${doomed.name} is the final player in the loser bracket and is eliminated from the arena.`
+          `Layer ${eliminatedLayer}: ${doomed.name} is the final player in the loser bracket and is eliminated from the arena.`
         );
         continue;
       }
@@ -709,10 +748,9 @@ class GameState {
       winnerPlayerIds.size === 0 && eliminatedPlayerIds.size === 0 ? 'tie' : 'completed';
 
     const message =
-      stageMessages.join(' ') ||
-      (status === 'tie'
+      status === 'tie'
         ? 'Every duel ended in a stalemate. Positions remain unchanged.'
-        : 'Duels resolved with updated standings.');
+        : 'Duels resolved with updated standings.';
 
     const demotedPlayerSteps = Array.from(demotionCounts.entries()).map(
       ([playerId, count]) => ({
@@ -733,7 +771,8 @@ class GameState {
         winnerPlayerIds: Array.from(winnerPlayerIds),
         demotedPlayerSteps,
         demotedPlayerIds,
-        eliminationEvents
+        eliminationEvents,
+        stageLog: stageMessages
       },
       matchups
     };

@@ -40,16 +40,14 @@
           <p id="player-status" class="feedback"></p>
         </section>
         <section class="tab-panel" data-tab-panel="strategy-summary">
-          <p class="hint">Quick view of strategies chosen at each stage by active players.</p>
+          <p class="hint">Quick view of strategies chosen by active players.</p>
           <div class="strategy-summary">
             <table class="strategy-table">
               <thead>
                 <tr>
-                  <th>Layer</th>
                   <th>Rock</th>
                   <th>Paper</th>
                   <th>Scissors</th>
-                  <th>Undecided</th>
                   <th>Total</th>
                 </tr>
               </thead>
@@ -91,16 +89,8 @@
       <div id="elimination-banner" class="elimination-banner hidden" role="status" aria-live="assertive"></div>
       <div class="round-outcome" id="round-outcome"></div>
       <div class="stage-occupancy">
-        <h3>Stage Occupancy</h3>
-        <table class="stage-occupancy-table">
-          <thead>
-            <tr>
-              <th>Layer</th>
-              <th>Players</th>
-            </tr>
-          </thead>
-          <tbody id="stage-occupancy-body"></tbody>
-        </table>
+        <h3>Layer Breakdown</h3>
+        <div id="stage-occupancy-body" class="layer-overview-grid"></div>
       </div>
     </section>
   </main>

@@ -300,51 +300,138 @@ button:disabled {
   margin: 1rem 0 1.5rem;
 }
 
-.stage-occupancy-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 0.5rem;
+.layer-overview-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.stage-occupancy-table th,
-.stage-occupancy-table td {
-  padding: 0.65rem 0.75rem;
-  border-bottom: 1px solid rgba(59, 201, 219, 0.1);
-  text-align: left;
+.layer-block {
+  background: rgba(16, 47, 68, 0.85);
+  border: 1px solid rgba(59, 201, 219, 0.18);
+  border-radius: 14px;
+  padding: 0.9rem 1rem 1.1rem;
+  backdrop-filter: blur(6px);
 }
 
-.stage-occupancy-table tbody tr:hover {
-  background: rgba(59, 201, 219, 0.08);
+.layer-block-header {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
-.stage-occupancy-table .player-pill {
+.layer-player-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.layer-player-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.player-pill {
   display: inline-block;
   margin: 0.15rem 0.25rem 0.15rem 0;
-  padding: 0.3rem 0.55rem;
+  padding: 0.32rem 0.65rem;
   border-radius: 999px;
   background: rgba(59, 201, 219, 0.18);
   color: var(--text);
   font-size: 0.85rem;
+  letter-spacing: 0.02em;
 }
 
-.stage-occupancy-table .player-pill.winner {
-  background: rgba(74, 222, 128, 0.25);
+.player-pill.winner {
+  background: rgba(74, 222, 128, 0.22);
   color: var(--success);
 }
 
-.stage-occupancy-table .player-pill.loser {
-  background: rgba(248, 113, 113, 0.18);
-  color: var(--danger);
-}
-
-.stage-occupancy-table .player-pill.inactive {
+.player-pill.loser {
   background: rgba(248, 113, 113, 0.2);
   color: var(--danger);
 }
 
-.stage-occupancy-table .player-pill.eliminated {
-  background: rgba(148, 163, 184, 0.2);
+.player-pill.inactive {
+  background: rgba(248, 113, 113, 0.22);
+  color: var(--danger);
+}
+
+.player-pill.eliminated {
+  background: rgba(148, 163, 184, 0.22);
   color: rgba(148, 163, 184, 0.9);
+}
+
+.layer-duel-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.35rem;
+}
+
+.layer-duel-table caption {
+  margin-bottom: 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: left;
+}
+
+.layer-duel-table th,
+.layer-duel-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid rgba(59, 201, 219, 0.12);
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.layer-duel-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.layer-duel-table .duel-winner {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.layer-duel-table .duel-loser {
+  color: var(--danger);
+}
+
+.layer-duel-table .duel-tie {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.layer-duel-table .duel-status {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.layer-duel-table .duel-status.resolved {
+  color: var(--text);
+}
+
+.layer-duel-table .duel-status.pending {
+  color: var(--muted);
+}
+
+.layer-duel-table .duel-status.bye {
+  color: var(--success);
+}
+
+.layer-duel-table .duel-status.tie {
+  color: var(--accent);
+}
+
+.layer-duel-empty {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .move-grid {
